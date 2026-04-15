@@ -1,246 +1,264 @@
-import{useState,useEffect,useCallback,useRef}from"react";
+import { useState, useEffect, useCallback } from "react";
 
-const API="https://web-production-72709.up.railway.app/api/state";
-const CLOB_API=API.replace("/api/state","/api/clob-status");
-const POLL=2500;
+const API = import.meta.env.VITE_API_URL || "https://web-production-72709.up.railway.app";
+const POLL = 2500;
 
-/* helpers */
-const ts=i=>!i?"":new Date(i).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-const tsf=i=>!i?"":new Date(i).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
-const pnlC=v=>v>0?"var(--g)":v<0?"var(--r)":"var(--m)";
-const pnlS=v=>v==null?"—":`${v>0?"+":""}$${v.toFixed(2)}`;
-const ic={nba:"🏀",nhl:"🏒",mlb:"⚾",nfl:"🏈",ncaab:"🏀",ncaaf:"🏈",wnba:"🏀",epl:"⚽",mls:"⚽",liga:"⚽",BTC:"₿",ETH:"Ξ",SOL:"◎"};
+/* ── helpers ───────────────────────────────────────────── */
+const $ = (n, d = 2) => (n ?? 0).toFixed(d);
+const pct = (n) => `${((n ?? 0) * 100).toFixed(1)}%`;
+const usd = (n) => { const v = n ?? 0; return `${v >= 0 ? "+" : ""}$${v.toFixed(2)}`; };
+const ago = (ts) => {
+  if (!ts) return "—";
+  const s = Math.floor(Date.now() / 1000 - ts);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h`;
+};
+const clock = (ts) => ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+const up = (s) => { if (!s) return "0s"; const h = Math.floor(s/3600), m = Math.floor((s%3600)/60); return h ? `${h}h${m}m` : `${m}m`; };
 
-export default function App(){
-  const[s,setS]=useState(null);
-  const[conn,setConn]=useState(false);
-  const[tab,setTab]=useState("overview");
-  const[eqH,setEqH]=useState([]);
-  const[clob,setClob]=useState("?");
-  const[now,setNow]=useState(Date.now());
-  const[expandedTrade,setExpanded]=useState(null);
+const SI = { nba:"🏀",wnba:"🏀",nhl:"🏒",mlb:"⚾",nfl:"🏈",ncaab:"🏀",ncaaf:"🏈",epl:"⚽",liga:"⚽",seriea:"⚽",bundes:"⚽",ligue1:"⚽",mls:"⚽",ligamx:"⚽",ucl:"⚽",uel:"⚽" };
 
-  const poll=useCallback(async()=>{
-    try{const r=await fetch(API);if(!r.ok)throw 0;
-    const d=await r.json();setS(d);setConn(true);
-    setEqH(p=>[...p.slice(-299),{t:Date.now(),eq:d.equity||0,pnl:d.pnl||0}]);
-    }catch{setConn(false)}
-  },[]);
-  useEffect(()=>{poll();const t=setInterval(poll,POLL);return()=>clearInterval(t)},[poll]);
-  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(t)},[]);
-  useEffect(()=>{
-    const chk=async()=>{try{const r=await fetch(CLOB_API);if(r.ok){const d=await r.json();setClob(d.status==="ok"?"ok":d.status==="no_market"?"idle":"err")}}catch{setClob("err")}};
-    chk();const t=setInterval(chk,30000);return()=>clearInterval(t);
-  },[]);
-
-  const d=s||{};
-  const eq=d.equity||0,pnl=d.pnl||0,wr=d.win_rate||0,roi=d.roi||0;
-  const trades=d.trade_history||[],logs=d.log||[],games=d.verified_games||[];
-  const targets=d.harvest_targets||[],signals=d.synth_signals||[];
-  const openPos=d.open_positions||[],eng=d.engines||{};
-  const hExp=d.harvest_exposure||0,sExp=d.synth_exposure||0;
-  const totalTrades=d.trades||0,wins=d.wins||0,losses=totalTrades-wins;
-
-  const hTrades=trades.filter(t=>t.engine==="harvest");
-  const sTrades=trades.filter(t=>t.engine==="synth");
-  const hWins=hTrades.filter(t=>t.status==="won").length;
-  const sWins=sTrades.filter(t=>t.status==="won").length;
-  const hRes=hTrades.filter(t=>t.status==="won"||t.status==="lost");
-  const sRes=sTrades.filter(t=>t.status==="won"||t.status==="lost");
-  const hPnl=hRes.reduce((a,t)=>a+(t.pnl||0),0);
-  const sPnl=sRes.reduce((a,t)=>a+(t.pnl||0),0);
-  const bigWin=trades.reduce((mx,t)=>t.pnl>mx?t.pnl:mx,0);
-  const bigLoss=trades.reduce((mn,t)=>t.pnl<mn?t.pnl:mn,0);
-  const avgWin=wins>0?trades.filter(t=>t.pnl>0).reduce((a,t)=>a+t.pnl,0)/wins:0;
-  const avgLoss=losses>0?trades.filter(t=>t.pnl<0).reduce((a,t)=>a+t.pnl,0)/losses:0;
-
-  const pnlTimeline=[];let runPnl=0;
-  for(const t of[...trades].reverse()){if(t.pnl!=null){runPnl+=t.pnl;pnlTimeline.push({t:t.timestamp,v:runPnl})}}
-
-  const nowS=Math.floor(now/1000);
-  const next5=Math.ceil(nowS/300)*300,next15=Math.ceil(nowS/900)*900;
-  const to5=next5-nowS,to15=next15-nowS;
-  const fmtCD=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-
-  const tabs=[
-    {id:"overview",l:"Overview",n:null},
-    {id:"feed",l:"Live Feed",n:logs.length||null},
-    {id:"crypto",l:"Crypto",n:sTrades.length||null},
-    {id:"harvest",l:"Harvest",n:games.filter(g=>g.level!=="final").length||null},
-    {id:"positions",l:"Positions",n:openPos.length||null},
-    {id:"analytics",l:"Analytics",n:null},
-  ];
-
-return(
-<div className="root">
-<style>{`
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap');
-:root{--bg:#090B10;--s1:#0F1118;--s2:#161823;--s3:#1E2132;--b:#282C42;
---t:#E8EAF0;--m:#7B819A;--d:#4A4F6A;--g:#00E676;--gd:#0A2E1E;--gl:#00E67622;
---r:#FF3D57;--rd:#2E0A14;--rl:#FF3D5722;--a:#FFB300;--al:#FFB30022;
---bl:#448AFF;--bll:#448AFF22;--p:#B388FF;
---mono:'JetBrains Mono',monospace;--sans:'Outfit',sans-serif;--rad:10px}
-*{box-sizing:border-box;margin:0;padding:0}body{margin:0;background:var(--bg);color:var(--t)}
-.root{font-family:var(--sans);min-height:100vh;background:var(--bg)}
-::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:var(--s3);border-radius:3px}
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-@keyframes breathe{0%,100%{box-shadow:0 0 0 0 var(--gl)}50%{box-shadow:0 0 0 6px transparent}}
-.fu{animation:fadeUp .35s ease-out both}.si{animation:slideIn .3s ease-out both}
-.pu{animation:pulse 1.5s infinite}.br{animation:breathe 2s infinite}
-.card{background:var(--s1);border:1px solid var(--s3);border-radius:var(--rad);padding:16px;transition:border-color .2s}
-.card:hover{border-color:var(--b)}
-.trow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--s3);cursor:pointer;transition:background .15s}
-.trow:hover{background:var(--s2)}
-@media(max-width:800px){.rg{grid-template-columns:1fr!important}.hd{display:none!important}}
-`}</style>
-
-<header style={{background:"var(--s1)",borderBottom:"1px solid var(--b)",padding:"0 20px",height:52,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-  <div style={{display:"flex",alignItems:"center",gap:14}}>
-    <div style={{display:"flex",alignItems:"center",gap:8}}>
-      <div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--g),var(--bl))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:"var(--bg)"}}>S</div>
-      <div><div style={{fontSize:14,fontWeight:700,letterSpacing:"-.02em"}}>SIGNAL</div><div style={{fontSize:8,color:"var(--d)",letterSpacing:".12em",marginTop:-2}}>HARVEST + SYNTH</div></div>
-    </div>
-  </div>
-  <div style={{display:"flex",alignItems:"center",gap:16}}>
-    <div style={{display:"flex",gap:16,fontFamily:"var(--mono)",fontSize:10}}>
-      <CountdownPill label="5m" secs={to5} hot={to5<=20}/>
-      <CountdownPill label="15m" secs={to15} hot={to15<=30}/>
-    </div>
-    <div style={{width:1,height:24,background:"var(--b)"}}/>
-    <div style={{display:"flex",alignItems:"center",gap:8}}>
-      <Dot on={conn} c="var(--g)" label="API"/><Dot on={eng.harvest} c="var(--g)" label="H"/>
-      <Dot on={eng.synth} c="var(--bl)" label="S"/><Dot on={clob==="ok"||clob==="idle"} c={clob==="ok"?"var(--g)":"var(--a)"} label="CLOB"/>
-    </div>
-  </div>
-</header>
-
-<nav style={{background:"var(--s1)",borderBottom:"1px solid var(--b)",padding:"0 20px",display:"flex",gap:0,overflowX:"auto"}}>
-  {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{fontSize:11,fontFamily:"var(--sans)",fontWeight:tab===t.id?700:400,padding:"11px 18px",background:"none",border:"none",cursor:"pointer",color:tab===t.id?"var(--t)":"var(--d)",borderBottom:tab===t.id?"2px solid var(--g)":"2px solid transparent",whiteSpace:"nowrap",transition:"all .15s",display:"flex",alignItems:"center",gap:6}}>{t.l}{t.n!=null&&<span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:8,background:tab===t.id?"var(--gl)":"var(--s3)",color:tab===t.id?"var(--g)":"var(--d)"}}>{t.n}</span>}</button>)}
-</nav>
-
-<main style={{maxWidth:1200,margin:"0 auto",padding:"16px 20px 80px"}}>
-
-{tab==="overview"&&<>
-  <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:10,marginBottom:16}} className="rg">
-    <div className="card" style={{background:"linear-gradient(135deg,var(--s1),var(--s2))",borderColor:pnl>=0?"var(--g)33":"var(--r)33"}}>
-      <div style={{fontSize:9,color:"var(--d)",letterSpacing:".1em",textTransform:"uppercase",fontWeight:500}}>EQUITY</div>
-      <div style={{fontSize:28,fontWeight:800,fontFamily:"var(--mono)",color:pnl>=0?"var(--g)":"var(--r)",marginTop:4,lineHeight:1}}>${eq.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-      <div style={{display:"flex",gap:16,marginTop:8}}>
-        <span style={{fontSize:11,fontFamily:"var(--mono)",color:pnlC(pnl)}}>{pnlS(pnl)}</span>
-        <span style={{fontSize:11,fontFamily:"var(--mono)",color:pnlC(roi)}}>{roi>=0?"+":""}{roi.toFixed(1)}% ROI</span>
-      </div>
-      {eqH.length>2&&<div style={{marginTop:10}}><Sparkline data={eqH.map(h=>h.eq)} color={pnl>=0?"var(--g)":"var(--r)"} h={50}/></div>}
-    </div>
-    <StatCard label="TRADES" value={totalTrades} sub={`${wins}W ${losses}L`} color="var(--t)"/>
-    <StatCard label="WIN RATE" value={`${(wr*100).toFixed(0)}%`} color={wr>=0.6?"var(--g)":"var(--a)"}><DonutChart pct={wr} size={38} color={wr>=0.6?"var(--g)":"var(--a)"}/></StatCard>
-    <StatCard label="DRAWDOWN" value={`${(d.drawdown||0).toFixed(1)}%`} sub={`HWM $${Math.round(d.hwm||eq)}`} color={(d.drawdown||0)>5?"var(--r)":"var(--m)"}/>
-  </div>
-  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}} className="rg">
-    <EngineCard engine="harvest" on={eng.harvest} trades={d.harvest_trades||0} winRate={hRes.length?hWins/hRes.length:0} pnl={hPnl} exposure={hExp} extra={games.filter(g=>g.level!=="final").length>0?`${games.filter(g=>g.level!=="final").length} live games`:null}/>
-    <EngineCard engine="crypto" on={eng.synth} trades={d.synth_trades||0} winRate={sRes.length?sWins/sRes.length:0} pnl={sPnl} exposure={sExp} extra={<span style={{fontFamily:"var(--mono)",fontSize:10}}><span style={{color:to5<=20?"var(--g)":"var(--d)"}}>5m:{fmtCD(to5)}</span>{" "}<span style={{color:to15<=30?"var(--g)":"var(--d)"}}>15m:{fmtCD(to15)}</span>{" "}CLOB:{clob==="ok"?"✓":"○"}</span>}/>
-  </div>
-  {openPos.length>0&&<><Sec>Open Positions ({openPos.length})</Sec><div className="card" style={{padding:0,marginBottom:16}}>{openPos.map((p,i)=><PosRow key={i} p={p}/>)}</div></>}
-  <Sec>Recent Activity</Sec>
-  <div className="card" style={{padding:0}}>{trades.length===0&&<Empty>Waiting for first trade…</Empty>}{trades.slice(0,12).map((t,i)=><TradeRow key={t.id||i} t={t} expanded={expandedTrade===t.id} onToggle={()=>setExpanded(expandedTrade===t.id?null:t.id)}/>)}</div>
-</>}
-
-{tab==="feed"&&<><Sec>Engine Log ({logs.length} entries)</Sec><div className="card" style={{padding:0,maxHeight:700,overflowY:"auto"}}>{logs.length===0&&<Empty>Waiting for activity…</Empty>}{logs.map((l,i)=><div key={i} className="si" style={{padding:"7px 14px",borderBottom:"1px solid var(--s3)",fontFamily:"var(--mono)",fontSize:11,lineHeight:1.6,animationDelay:`${Math.min(i*20,300)}ms`}}><span style={{color:"var(--d)",marginRight:10}}>{ts(l.t)}</span><span style={{color:l.m.includes("✓")?"var(--g)":l.m.includes("✗")?"var(--r)":l.m.includes("SNIPE")||l.m.includes("ARB")?"var(--a)":l.m.includes("HARVEST")?"var(--g)":"var(--m)"}}>{l.m}</span></div>)}</div></>}
-
-{tab==="crypto"&&<>
-  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-    <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:17,fontWeight:700}}>Crypto Engine</span><StatusPill on={clob==="ok"||clob==="idle"} label={clob==="ok"?"CLOB LIVE":clob==="idle"?"IDLE":"OFF"} color={clob==="ok"?"var(--g)":"var(--a)"}/></div>
-    <div style={{display:"flex",gap:16,fontFamily:"var(--mono)",fontSize:11}}><CountdownPill label="5m" secs={to5} hot={to5<=20}/><CountdownPill label="15m" secs={to15} hot={to15<=30}/></div>
-  </div>
-  <div className="card" style={{marginBottom:14,padding:"14px 16px"}}><div style={{fontSize:9,color:"var(--d)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>WINDOW PROGRESS</div><WindowBar label="5-min" total={300} remaining={to5} hotZone={20}/><WindowBar label="15-min" total={900} remaining={to15} hotZone={30}/></div>
-  {signals.length>0&&<><Sec>Live Signals ({signals.length})</Sec><div style={{display:"grid",gap:8,marginBottom:16}}>{signals.map((sg,i)=><SignalCard key={i} sg={sg}/>)}</div></>}
-  {signals.length===0&&<div className="card" style={{textAlign:"center",padding:32,color:"var(--d)",fontSize:12,marginBottom:16}}>{eng.synth?`Scanning… next window ${fmtCD(Math.min(to5,to15))}`:"Engine offline"}</div>}
-  <Sec>Crypto Trades ({sTrades.length})</Sec><div className="card" style={{padding:0}}>{sTrades.length===0&&<Empty>No crypto trades yet</Empty>}{sTrades.slice(0,30).map((t,i)=><TradeRow key={t.id||i} t={t} expanded={expandedTrade===t.id} onToggle={()=>setExpanded(expandedTrade===t.id?null:t.id)}/>)}</div>
-</>}
-
-{tab==="harvest"&&<>
-  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><span style={{fontSize:17,fontWeight:700}}>Harvest Engine</span><span style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)"}}>{games.filter(g=>g.level!=="final").length} live · {games.length} total</span></div>
-  {games.filter(g=>g.level!=="final").length>0&&<><Sec>Live Verified Games</Sec><div style={{display:"grid",gap:8,marginBottom:16}}>{games.filter(g=>g.level!=="final").map((g,i)=><GameCard key={i} g={g}/>)}</div></>}
-  {targets.length>0&&<><Sec>Harvest Targets ({targets.length})</Sec><div style={{display:"grid",gap:8,marginBottom:16}}>{targets.map((t,i)=><TargetCard key={i} t={t}/>)}</div></>}
-  <Sec>Harvest Trades ({hTrades.length})</Sec><div className="card" style={{padding:0}}>{hTrades.length===0&&<Empty>No harvest trades yet</Empty>}{hTrades.slice(0,30).map((t,i)=><TradeRow key={t.id||i} t={t} expanded={expandedTrade===t.id} onToggle={()=>setExpanded(expandedTrade===t.id?null:t.id)}/>)}</div>
-</>}
-
-{tab==="positions"&&<>
-  <Sec>Open ({openPos.length}) · Exposed ${Math.round(d.exposure||0)}</Sec>
-  {openPos.length===0&&<div className="card" style={{textAlign:"center",padding:32,color:"var(--d)",fontSize:12,marginBottom:16}}>No open positions</div>}
-  {openPos.map((p,i)=><div key={i} className="card fu" style={{marginBottom:8,borderLeft:`3px solid ${p.engine==="harvest"?"var(--g)":"var(--bl)"}`}}><div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:16}}>{ic[p.sport]||"🎯"}</span><EngBadge engine={p.engine}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600}}>{p.outcome}</div><div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2}}>{p.detail}</div></div><div style={{textAlign:"right",fontFamily:"var(--mono)"}}><div style={{fontSize:14,fontWeight:700}}>{p.shares}× @ ${(p.entry_price||0).toFixed(4)}</div><div style={{fontSize:11,color:"var(--m)"}}>Cost: ${(p.cost_basis||0).toFixed(2)}</div><div style={{fontSize:9,color:"var(--d)",marginTop:2}}>{tsf(p.entry_time)}</div></div></div></div>)}
-  <Sec style={{marginTop:20}}>Resolved ({trades.filter(t=>t.status&&t.status!=="open").length})</Sec>
-  <div className="card" style={{padding:0}}>{trades.filter(t=>t.status&&t.status!=="open").slice(0,50).map((t,i)=><TradeRow key={t.id||i} t={t} expanded={expandedTrade===t.id} onToggle={()=>setExpanded(expandedTrade===t.id?null:t.id)}/>)}</div>
-</>}
-
-{tab==="analytics"&&<>
-  <Sec>Performance Summary</Sec>
-  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}} className="rg">
-    <StatCard label="TOTAL TRADES" value={totalTrades} color="var(--t)"/>
-    <StatCard label="WIN RATE" value={`${(wr*100).toFixed(1)}%`} color={wr>=0.6?"var(--g)":"var(--a)"}><DonutChart pct={wr} size={38} color={wr>=0.6?"var(--g)":"var(--a)"}/></StatCard>
-    <StatCard label="BEST WIN" value={pnlS(bigWin)} color="var(--g)"/>
-    <StatCard label="WORST LOSS" value={pnlS(bigLoss)} color="var(--r)"/>
-    <StatCard label="AVG WIN" value={pnlS(avgWin)} color="var(--g)"/>
-    <StatCard label="AVG LOSS" value={pnlS(avgLoss)} color="var(--r)"/>
-  </div>
-  {pnlTimeline.length>2&&<><Sec>Cumulative P&L</Sec><div className="card" style={{padding:"14px 16px",marginBottom:16}}><Sparkline data={pnlTimeline.map(p=>p.v)} color={pnl>=0?"var(--g)":"var(--r)"} h={80} showZero/></div></>}
-  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}} className="rg">
-    <div className="card"><div style={{fontSize:11,fontWeight:600,color:"var(--d)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:10}}>Engine Breakdown</div><div style={{display:"flex",gap:20,alignItems:"center"}}><DonutChart pct={totalTrades>0?(d.harvest_trades||0)/totalTrades:0} size={60} color="var(--g)" label="H"/><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:6}}><span style={{color:"var(--g)"}}>● Harvest</span><span style={{fontFamily:"var(--mono)",color:"var(--m)"}}>{d.harvest_trades||0} · {pnlS(hPnl)}</span></div><div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span style={{color:"var(--bl)"}}>● Crypto</span><span style={{fontFamily:"var(--mono)",color:"var(--m)"}}>{d.synth_trades||0} · {pnlS(sPnl)}</span></div></div></div></div>
-    <div className="card"><div style={{fontSize:11,fontWeight:600,color:"var(--d)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:10}}>Risk Metrics</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><MiniStat label="Exposure" value={`$${Math.round(d.exposure||0)}`} color="var(--bl)"/><MiniStat label="Cash" value={`$${Math.round(d.bankroll||0)}`} color="var(--t)"/><MiniStat label="Drawdown" value={`${(d.drawdown||0).toFixed(1)}%`} color={(d.drawdown||0)>5?"var(--r)":"var(--m)"}/><MiniStat label="HWM" value={`$${Math.round(d.hwm||eq)}`} color="var(--g)"/></div></div>
-  </div>
-  <Sec>Trade Streak</Sec>
-  <div className="card" style={{padding:"14px 16px"}}><div style={{display:"flex",gap:2,height:32,borderRadius:4,overflow:"hidden"}}>{trades.slice(0,60).map((t,i)=>{const w=t.status==="won",l=t.status==="lost";return<div key={i} title={`${t.outcome||t.event}: ${pnlS(t.pnl)}`} style={{flex:1,background:w?"var(--g)":l?"var(--r)":"var(--s3)",opacity:w||l?0.7:0.2,transition:"opacity .2s",cursor:"pointer",minWidth:3,borderRadius:1}} onMouseEnter={e=>e.target.style.opacity="1"} onMouseLeave={e=>e.target.style.opacity=w||l?"0.7":"0.2"}/>})}</div><div style={{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:9,color:"var(--d)",fontFamily:"var(--mono)"}}><span>oldest</span><span>newest →</span></div></div>
-</>}
-
-</main></div>);
+/* ── equity chart ──────────────────────────────────────── */
+function Chart({ curve, base }) {
+  if (!curve?.length) return <div style={c.chartNone}>Waiting for first trade…</div>;
+  const d = [{ equity: base }, ...curve];
+  const v = d.map(p => p.equity);
+  const lo = Math.min(...v) - 2, hi = Math.max(...v) + 2;
+  const W = 600, H = 140, P = 32;
+  const pts = d.map((p, i) => ({
+    x: P + (i / (d.length - 1)) * (W - P * 2),
+    y: P + (1 - (p.equity - lo) / (hi - lo)) * (H - P * 2),
+  }));
+  const last = pts[pts.length - 1];
+  const isUp = v[v.length - 1] >= base;
+  const col = isUp ? "#10b981" : "#ef4444";
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>
+      <polyline fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round"
+        points={pts.map(p => `${p.x},${p.y}`).join(" ")} />
+      <circle cx={last.x} cy={last.y} r="3" fill={col} />
+      <text x={last.x + 6} y={last.y + 3} fill={col} fontSize="9"
+        fontFamily="'DM Mono',monospace" fontWeight="500">${$(v[v.length-1])}</text>
+    </svg>
+  );
 }
 
-/* COMPONENTS */
-function Dot({on,c,label}){return<div style={{display:"flex",alignItems:"center",gap:3}} title={label}><span style={{width:6,height:6,borderRadius:3,background:on?c:"var(--d)",display:"block",transition:"all .3s",boxShadow:on?`0 0 8px ${c}55`:""}}/><span style={{fontSize:9,color:on?c:"var(--d)",fontFamily:"var(--mono)",fontWeight:500}}>{label}</span></div>}
+/* ── number cell ───────────────────────────────────────── */
+function N({ label, value, color }) {
+  return (
+    <div style={c.n}>
+      <div style={{ ...c.nVal, color: color || "#fff" }}>{value}</div>
+      <div style={c.nLbl}>{label}</div>
+    </div>
+  );
+}
 
-function CountdownPill({label,secs,hot}){const f=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;return<div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:6,background:hot?"var(--gl)":"var(--s3)",transition:"all .3s"}} className={hot?"br":""}><span style={{fontSize:9,color:"var(--d)"}}>{label}</span><span style={{fontSize:11,fontWeight:700,color:hot?"var(--g)":"var(--d)",fontFamily:"var(--mono)"}}>{f(secs)}</span>{hot&&<span className="pu" style={{fontSize:7,color:"var(--g)",fontWeight:700}}>HOT</span>}</div>}
+/* ── trade row ─────────────────────────────────────────── */
+function Row({ d, open }) {
+  const [ex, setEx] = useState(false);
+  const eng = d.engine === "harvest";
+  return (
+    <div style={c.row} onClick={() => setEx(!ex)}>
+      <div style={c.rowTop}>
+        <span style={{ ...c.eng, color: eng ? "#f59e0b" : "#06b6d4" }}>{eng ? "HRV" : "SHP"}</span>
+        <span style={c.rowIcon}>{SI[d.sport] || "•"}</span>
+        <span style={c.rowTeam}>{d.team}</span>
+        <span style={c.rowMeta}>{$(d.entry_price, 3)}</span>
+        <span style={{ ...c.rowMeta, marginLeft: "auto" }}>${$(d.cost)}</span>
+        {open ? (
+          <span style={{ ...c.tag, color: "#f59e0b" }}>{d.status === "filled" ? "LIVE" : "…"}</span>
+        ) : (
+          <span style={{ ...c.tag, color: d.result === "WIN" ? "#10b981" : "#ef4444" }}>
+            {d.result} {usd(d.pnl)}
+          </span>
+        )}
+        <span style={c.arrow}>{ex ? "−" : "+"}</span>
+      </div>
+      {ex && (
+        <div style={c.rowDetail}>
+          <span>{d.market}</span>
+          <span>Conf {pct(d.confidence)} · Edge {pct(d.edge)}{d.pinnacle_prob > 0 ? ` · Pin ${pct(d.pinnacle_prob)}` : ""}</span>
+          {d.score_line && <span style={{ color: "#f59e0b" }}>{d.score_line}</span>}
+          <span style={{ color: "#444" }}>{clock(d.opened_at)}{d.closed_at ? ` → ${clock(d.closed_at)}` : ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
-function StatCard({label,value,sub,color,children}){return<div className="card"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{fontSize:9,color:"var(--d)",letterSpacing:".08em",textTransform:"uppercase",fontWeight:500,marginBottom:4}}>{label}</div><div style={{fontSize:20,fontWeight:800,fontFamily:"var(--mono)",color:color||"var(--t)",lineHeight:1.2}}>{value}</div>{sub&&<div style={{fontSize:10,color:"var(--d)",marginTop:4,fontFamily:"var(--mono)"}}>{sub}</div>}</div>{children}</div></div>}
+/* ── engine section ────────────────────────────────────── */
+function Engine({ name, color, stats, positions, trades }) {
+  const [tab, setTab] = useState("open");
+  const s = stats || {};
+  const items = tab === "open" ? positions : trades;
+  return (
+    <div style={c.engine}>
+      <div style={c.engHead}>
+        <span style={{ ...c.engTitle, color }}>{name}</span>
+        <span style={c.engSub}>{s.total_trades || 0} trades · {pct(s.win_rate)} W</span>
+      </div>
+      <div style={c.engStats}>
+        <N label="P&L" value={usd(s.total_pnl)} color={(s.total_pnl||0) >= 0 ? "#10b981" : "#ef4444"} />
+        <N label="W / L" value={`${s.wins||0}/${s.losses||0}`} />
+        <N label="Open" value={s.open_positions || 0} color="#f59e0b" />
+      </div>
+      <div style={c.tabs}>
+        {["open", "history"].map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={tab === t ? c.tabOn : c.tabOff}>
+            {t === "open" ? `Open ${positions.length}` : `History ${trades.length}`}
+          </button>
+        ))}
+      </div>
+      <div style={c.list}>
+        {items.length === 0 && <div style={c.nil}>{tab === "open" ? "No positions" : "No trades yet"}</div>}
+        {items.map(d => <Row key={d.id} d={d} open={tab === "open"} />)}
+      </div>
+    </div>
+  );
+}
 
-function MiniStat({label,value,color}){return<div><div style={{fontSize:9,color:"var(--d)",letterSpacing:".05em",textTransform:"uppercase"}}>{label}</div><div style={{fontSize:14,fontWeight:700,fontFamily:"var(--mono)",color:color||"var(--t)",marginTop:2}}>{value}</div></div>}
+/* ── app ───────────────────────────────────────────────── */
+export default function App() {
+  const [s, setS] = useState(null);
+  const [ok, setOk] = useState(false);
 
-function DonutChart({pct,size=40,color="var(--g)",label}){const r=size/2-3,circ=2*Math.PI*r,offset=circ*(1-Math.min(pct||0,1));return<svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--s3)" strokeWidth={3}/><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={3} strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"/>{label&&<text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" style={{transform:"rotate(90deg)",transformOrigin:"center",fontSize:9,fontWeight:700,fill:color,fontFamily:"var(--mono)"}}>{label}</text>}</svg>}
+  const poll = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/api/state`);
+      if (!r.ok) throw 0;
+      setS(await r.json());
+      setOk(true);
+    } catch { setOk(false); }
+  }, []);
 
-function EngineCard({engine,on,trades,winRate,pnl,exposure,extra}){const h=engine==="harvest",c=h?"var(--g)":"var(--bl)";return<div className="card"><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><Dot on={on} c={c}/><span style={{fontSize:14,fontWeight:700,textTransform:"capitalize"}}>{engine}</span><span style={{marginLeft:"auto",fontSize:10,color:"var(--d)",fontFamily:"var(--mono)"}}>Exp: ${exposure.toFixed(0)}</span></div><div style={{display:"flex",alignItems:"center",gap:16}}><DonutChart pct={winRate} size={48} color={c}/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,flex:1}}><MiniStat label="Trades" value={trades}/><MiniStat label="Win Rate" value={winRate>0?`${(winRate*100).toFixed(0)}%`:"—"}/><MiniStat label="P&L" value={pnlS(pnl)} color={pnlC(pnl)}/></div></div>{extra&&<div style={{marginTop:10,fontSize:10,color:c}}>{extra}</div>}</div>}
+  useEffect(() => { poll(); const i = setInterval(poll, POLL); return () => clearInterval(i); }, [poll]);
 
-function WindowBar({label,total,remaining,hotZone}){const pct=Math.min((total-remaining)/total,1),inHot=remaining<=hotZone;return<div style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"var(--d)",marginBottom:3,fontFamily:"var(--mono)"}}><span>{label}</span><span style={{color:inHot?"var(--g)":"var(--d)"}}>{Math.floor(remaining/60)}:{String(remaining%60).padStart(2,"0")} left</span></div><div style={{height:6,background:"var(--s3)",borderRadius:3,overflow:"hidden",position:"relative"}}><div style={{height:"100%",width:`${pct*100}%`,background:inHot?"var(--g)":"var(--bl)",borderRadius:3,transition:"width 1s linear"}}/><div style={{position:"absolute",right:0,top:0,height:"100%",width:`${hotZone/total*100}%`,background:"var(--gl)",borderRadius:"0 3px 3px 0"}}/></div></div>}
+  const hp = (s?.open_positions||[]).filter(p => p.engine==="harvest");
+  const sp = (s?.open_positions||[]).filter(p => p.engine==="sharp");
+  const ht = (s?.trade_history||[]).filter(t => t.engine==="harvest");
+  const st = (s?.trade_history||[]).filter(t => t.engine==="sharp");
 
-function SignalCard({sg}){const dirC=sg.direction==="up"?"var(--g)":sg.direction==="down"?"var(--r)":"var(--a)";return<div className="card fu" style={{borderLeft:`3px solid ${dirC}`,padding:"12px 14px"}}><div style={{display:"flex",alignItems:"center",gap:12}}><span style={{fontSize:22}}>{ic[sg.asset]||"🪙"}</span><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:14,fontWeight:700}}>{sg.asset}</span><LayerBadge layer={sg.layer}/><span style={{fontSize:10,color:"var(--d)"}}>{sg.timeframe}</span><span style={{fontSize:9,fontFamily:"var(--mono)",color:"var(--d)",padding:"1px 5px",borderRadius:3,background:"var(--s3)"}}>{sg.priceSource==="clob"?"LIVE":"EST"}</span></div><div style={{display:"flex",gap:14,marginTop:4,fontSize:10,fontFamily:"var(--mono)",color:"var(--m)"}}><span>{sg.shares}× @ ${(sg.price||0).toFixed(4)}</span><span>Cost: ${(sg.cost||0).toFixed(2)}</span>{sg.spread>0&&<span>Spread: {(sg.spread*100).toFixed(1)}%</span>}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:800,fontFamily:"var(--mono)",color:dirC}}>{sg.direction?.toUpperCase()}</div><div style={{fontSize:11,fontFamily:"var(--mono)",color:"var(--g)",marginTop:2}}>EV: {sg.ev!=null?`+${(sg.ev*100).toFixed(1)}¢`:"—"}</div></div></div></div>}
+  return (
+    <div style={c.root}>
+      {/* header */}
+      <header style={c.head}>
+        <div style={c.brand}>
+          <span style={c.mark}>◈</span>
+          <span style={c.wordmark}>SIGNAL</span>
+          {s?.paper_mode && <span style={c.mode}>PAPER</span>}
+          {s && !s.paper_mode && <span style={{...c.mode, color:"#10b981", borderColor:"#10b98133"}}>LIVE</span>}
+        </div>
+        <div style={c.headR}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:ok?"#10b981":"#ef4444",flexShrink:0}} />
+          {s && <span style={c.headMeta}>${$(s.equity)} · {usd(s.total_pnl)} · {up(s.uptime)}</span>}
+        </div>
+      </header>
 
-function GameCard({g}){const lc=g.level==="blowout"?"var(--g)":g.level==="strong"?"var(--bl)":"var(--a)";return<div className="card fu" style={{borderLeft:`3px solid ${lc}`,padding:"10px 14px"}}><div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:18}}>{ic[g.sport]||"🎮"}</span><div style={{flex:1}}><div style={{fontFamily:"var(--mono)",fontSize:13,fontWeight:600}}>{g.scoreLine}</div><div style={{fontSize:10,color:"var(--d)",marginTop:2}}>{g.period} {g.clock} · {g.leader} +{g.lead}</div></div><div style={{display:"flex",alignItems:"center",gap:8}}><DonutChart pct={g.confidence} size={32} color={lc}/><div style={{textAlign:"right"}}><div style={{fontSize:12,fontFamily:"var(--mono)",fontWeight:700,color:lc}}>{(g.confidence*100).toFixed(1)}%</div><LevelBadge level={g.level}/></div></div></div></div>}
+      {!s ? (
+        <div style={c.loading}>
+          <div style={c.spin} />
+          <span style={{ color: "#333", fontSize: 12 }}>connecting…</span>
+        </div>
+      ) : (
+        <main style={c.main}>
+          {/* live games ticker */}
+          {s.live_games?.length > 0 && (
+            <div style={c.ticker}>
+              {s.live_games.map((g, i) => (
+                <span key={i} style={c.tickItem}>
+                  {SI[g.sport]||"•"} {g.away} @ {g.home} <span style={{color:"#444"}}>{g.detail}</span>
+                </span>
+              ))}
+            </div>
+          )}
 
-function TargetCard({t}){return<div className="card fu" style={{padding:"10px 14px"}}><div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:14}}>{ic[t.sport]||"🎮"}</span><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{t.outcome}</div><div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2}}>{t.scoreLine}</div></div><div style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:11}}><div style={{fontWeight:700,color:"var(--g)"}}>${(t.price||0).toFixed(4)} → +{((t.return||0)*100).toFixed(1)}%</div><div style={{fontSize:9,color:"var(--d)",marginTop:2}}>EV:+{t.ev!=null?(t.ev*100).toFixed(1):"?"}¢ · {t.priceSource==="clob"?"LIVE":"GAMMA"} · {t.shares}×</div></div><LevelBadge level={t.level}/></div></div>}
+          {/* equity */}
+          <section style={c.section}>
+            <div style={c.chartWrap}><Chart curve={s.equity_curve} base={s.starting_bankroll} /></div>
+          </section>
 
-function TradeRow({t,expanded,onToggle}){const w=t.status==="won",l=t.status==="lost",o=!w&&!l,ac=w?"var(--g)":l?"var(--r)":"var(--bl)",bg=w?"var(--gd)":l?"var(--rd)":"transparent";return<><div className="trow" style={{background:bg}} onClick={onToggle}><span style={{width:20,height:20,borderRadius:5,background:`${ac}22`,color:ac,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{w?"✓":l?"✗":"▸"}</span><span style={{fontSize:14}}>{ic[t.sport]||"🎯"}</span><EngBadge engine={t.engine||"synth"}/>{t.layer&&<LayerBadge layer={t.layer}/>}<div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.outcome||t.event||"Trade"}</div><div style={{fontSize:9,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2}}>{t.timeframe?`${t.timeframe} · `:""}{t.scoreLine||""}{t.ev!=null&&t.ev!==0?` · EV:+${(t.ev*100).toFixed(1)}¢`:""}</div></div><div style={{textAlign:"right",flexShrink:0,fontFamily:"var(--mono)"}}><div style={{fontSize:12,fontWeight:600}}>${(t.entryPrice||0).toFixed(t.priceSource==="clob"?4:2)}</div>{t.pnl!=null&&<div style={{fontSize:12,fontWeight:700,color:ac,marginTop:1}}>{pnlS(t.pnl)}</div>}</div><div style={{textAlign:"right",flexShrink:0,minWidth:44}}><span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:3,background:`${ac}22`,color:ac,textTransform:"uppercase"}}>{t.status||"open"}</span><div style={{fontSize:8,color:"var(--d)",fontFamily:"var(--mono)",marginTop:3}}>{ts(t.timestamp)}</div></div><span style={{fontSize:10,color:"var(--d)",transition:"transform .2s",transform:expanded?"rotate(180deg)":"rotate(0)"}}>▾</span></div>
-{expanded&&<div className="fu" style={{padding:"10px 14px 14px 54px",background:"var(--s2)",borderBottom:"1px solid var(--s3)"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,fontSize:11,fontFamily:"var(--mono)"}}><div><span style={{color:"var(--d)"}}>Entry Price</span><br/><span style={{fontWeight:600}}>${(t.entryPrice||0).toFixed(4)}</span></div><div><span style={{color:"var(--d)"}}>Shares</span><br/><span style={{fontWeight:600}}>{t.shares||"—"}</span></div><div><span style={{color:"var(--d)"}}>Cost</span><br/><span style={{fontWeight:600}}>${(t.cost||0).toFixed(2)}</span></div><div><span style={{color:"var(--d)"}}>P&L</span><br/><span style={{fontWeight:600,color:pnlC(t.pnl)}}>{pnlS(t.pnl)}</span></div><div><span style={{color:"var(--d)"}}>Edge / EV</span><br/><span style={{fontWeight:600}}>{t.edgePct!=null?`+${typeof t.edgePct==="number"?t.edgePct.toFixed(1):t.edgePct}%`:""}{t.ev?` · +${(t.ev*100).toFixed(1)}¢`:""}</span></div><div><span style={{color:"var(--d)"}}>Confidence</span><br/><span style={{fontWeight:600}}>{t.confidence?`${(t.confidence*100).toFixed(1)}%`:"—"}</span></div><div><span style={{color:"var(--d)"}}>Price Source</span><br/><span style={{fontWeight:600}}>{t.priceSource==="clob"?"CLOB (Live)":t.priceSource==="gamma"?"Gamma API":t.priceSource||"Estimate"}</span></div><div><span style={{color:"var(--d)"}}>Spread</span><br/><span style={{fontWeight:600}}>{t.spread?`${(t.spread*100).toFixed(2)}%`:"—"}</span></div>{t.synthProb!=null&&<div><span style={{color:"var(--d)"}}>Synth Prob</span><br/><span style={{fontWeight:600}}>{(t.synthProb*100).toFixed(1)}%</span></div>}{t.polyProb!=null&&<div><span style={{color:"var(--d)"}}>Poly Prob</span><br/><span style={{fontWeight:600}}>{(t.polyProb*100).toFixed(1)}%</span></div>}<div><span style={{color:"var(--d)"}}>Time</span><br/><span style={{fontWeight:600}}>{tsf(t.timestamp)}</span></div><div><span style={{color:"var(--d)"}}>Engine / Layer</span><br/><span style={{fontWeight:600}}>{t.engine||"—"} / {t.layer||t.level||"—"}</span></div></div></div>}</>}
+          {/* numbers */}
+          <div style={c.grid}>
+            <N label="Start" value={`$${$(s.starting_bankroll)}`} />
+            <N label="Equity" value={`$${$(s.equity)}`} />
+            <N label="P&L" value={usd(s.total_pnl)} color={s.total_pnl>=0?"#10b981":"#ef4444"} />
+            <N label="Win%" value={pct(s.overall_stats?.win_rate)} />
+            <N label="Trades" value={s.overall_stats?.total_trades ?? 0} />
+            <N label="Scans" value={s.scan_count} />
+          </div>
 
-function PosRow({p}){return<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid var(--s3)"}}><span style={{fontSize:14}}>{ic[p.sport]||"🎯"}</span><EngBadge engine={p.engine}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{p.outcome}</div><div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.detail}</div></div><div style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:11}}><div style={{fontWeight:600}}>${(p.entry_price||0).toFixed(4)} × {p.shares}</div><div style={{color:"var(--d)",fontSize:9,marginTop:2}}>{ts(p.entry_time)}</div></div></div>}
+          {/* engines */}
+          <Engine name="HARVEST" color="#f59e0b" stats={s.harvest_stats} positions={hp} trades={ht} />
+          <Engine name="SHARP" color="#06b6d4" stats={s.sharp_stats} positions={sp} trades={st} />
 
-function Sec({children,style:sx}){return<div style={{fontSize:11,fontWeight:600,color:"var(--d)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:8,...sx}}>{children}</div>}
-function Empty({children}){return<div style={{padding:36,textAlign:"center",color:"var(--d)",fontSize:12}}>{children}</div>}
-function EngBadge({engine}){const h=engine==="harvest";return<span style={{fontSize:9,fontWeight:600,padding:"2px 7px",borderRadius:4,background:h?"var(--gd)":"#0A1A3D",color:h?"var(--g)":"var(--bl)",textTransform:"uppercase",letterSpacing:".04em"}}>{engine}</span>}
-function LayerBadge({layer}){const c={snipe:{bg:"var(--gd)",c:"var(--g)"},synth:{bg:"#1A0A3D",c:"var(--p)"},arb:{bg:"#3D2A0A",c:"var(--a)"}};const s=c[layer]||c.snipe;return<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:3,background:s.bg,color:s.c,textTransform:"uppercase",letterSpacing:".05em"}}>{layer}</span>}
-function LevelBadge({level}){const c={blowout:{bg:"var(--gd)",c:"var(--g)"},strong:{bg:"#0A1A3D",c:"var(--bl)"},safe:{bg:"#3D2A0A",c:"var(--a)"},final:{bg:"#1A0A3D",c:"var(--p)"}};const s=c[level]||{bg:"var(--s3)",c:"var(--d)"};return<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:3,background:s.bg,color:s.c,textTransform:"uppercase",letterSpacing:".05em"}}>{level}</span>}
-function StatusPill({on,label,color}){return<div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:10,background:on?`${color}18`:"var(--s3)",fontSize:9,fontWeight:600,fontFamily:"var(--mono)"}}><span style={{width:5,height:5,borderRadius:3,background:on?color:"var(--d)"}}/><span style={{color:on?color:"var(--d)"}}>{label}</span></div>}
+          {/* footer */}
+          <div style={c.foot}>
+            H {ago(s.last_harvest_scan)} · S {ago(s.last_sharp_scan)} · R {ago(s.last_resolve_check)}
+            {s.odds_api_quota != null && <span> · Q {s.odds_api_quota}/500</span>}
+          </div>
+        </main>
+      )}
+    </div>
+  );
+}
 
-function Sparkline({data=[],color="var(--g)",h=48,showZero}){
-  if(data.length<2)return<div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--d)",fontSize:10,fontFamily:"var(--mono)"}}>awaiting data…</div>;
-  const w=700,pad=4;const mn=Math.min(...data,showZero?0:Infinity),mx=Math.max(...data,showZero?0:-Infinity),r=mx-mn||1;
-  const toY=v=>h-pad-((v-mn)/r)*(h-pad*2);
-  const pts=data.map((v,i)=>({x:pad+(i/(data.length-1))*(w-pad*2),y:toY(v)}));
-  const dd=pts.map(p=>`${p.x},${p.y}`).join(" ");const last=pts[pts.length-1];
-  const uid=`sp${Math.random().toString(36).slice(2,7)}`;const zeroY=showZero?toY(0):null;
-  return<svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{display:"block"}}>
-    <defs><linearGradient id={uid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".18"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
-    {showZero&&zeroY!=null&&<line x1={pad} y1={zeroY} x2={w-pad} y2={zeroY} stroke="var(--s3)" strokeWidth="1" strokeDasharray="4,4"/>}
-    <polygon points={`${pts[0].x},${h} ${dd} ${last.x},${h}`} fill={`url(#${uid})`}/>
-    <polyline points={dd} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx={last.x} cy={last.y} r="3.5" fill={color}><animate attributeName="r" values="3.5;5.5;3.5" dur="2s" repeatCount="indefinite"/></circle>
-  </svg>;
+/* ── styles — VV-inspired: black, white, one accent ──── */
+const ff = "'DM Mono', 'JetBrains Mono', monospace";
+const c = {
+  root: { minHeight:"100dvh", background:"#000", color:"#e5e5e5", fontFamily:ff, padding:"0 env(safe-area-inset-right) 0 env(safe-area-inset-left)", WebkitFontSmoothing:"antialiased" },
+  head: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 16px 12px", borderBottom:"1px solid #111" },
+  brand: { display:"flex", alignItems:"center", gap:8 },
+  mark: { fontSize:18, color:"#10b981", fontWeight:700 },
+  wordmark: { fontSize:12, fontWeight:700, letterSpacing:"0.2em", color:"#fff" },
+  mode: { fontSize:8, padding:"2px 6px", border:"1px solid #f59e0b33", color:"#f59e0b", borderRadius:2, letterSpacing:"0.1em" },
+  headR: { display:"flex", alignItems:"center", gap:8 },
+  headMeta: { fontSize:11, color:"#666", whiteSpace:"nowrap" },
+  main: { maxWidth:600, margin:"0 auto", padding:"0 16px 48px" },
+  section: { marginTop:20 },
+  chartWrap: { background:"#0a0a0a", borderRadius:8, border:"1px solid #111", padding:"12px 8px" },
+  chartNone: { height:60, display:"flex", alignItems:"center", justifyContent:"center", color:"#222", fontSize:11 },
+  grid: { display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:6, marginTop:16 },
+  n: { background:"#0a0a0a", border:"1px solid #111", borderRadius:6, padding:"10px 8px", textAlign:"center" },
+  nVal: { fontSize:14, fontWeight:600, color:"#fff" },
+  nLbl: { fontSize:8, color:"#444", textTransform:"uppercase", letterSpacing:"0.12em", marginTop:3 },
+  engine: { marginTop:20, background:"#0a0a0a", border:"1px solid #111", borderRadius:8, overflow:"hidden" },
+  engHead: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px", borderBottom:"1px solid #111" },
+  engTitle: { fontSize:11, fontWeight:700, letterSpacing:"0.15em" },
+  engSub: { fontSize:10, color:"#333" },
+  engStats: { display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:4, padding:"10px" },
+  tabs: { display:"flex", borderBottom:"1px solid #111" },
+  tabOff: { flex:1, background:"none", border:"none", borderBottom:"2px solid transparent", color:"#333", fontFamily:ff, fontSize:10, padding:"8px 0", cursor:"pointer", textAlign:"center" },
+  tabOn: { flex:1, background:"none", border:"none", borderBottom:"2px solid #10b981", color:"#e5e5e5", fontFamily:ff, fontSize:10, padding:"8px 0", cursor:"pointer", textAlign:"center" },
+  list: { maxHeight:300, overflowY:"auto" },
+  nil: { padding:24, textAlign:"center", color:"#1a1a1a", fontSize:10 },
+  row: { padding:"10px 12px", borderBottom:"1px solid #0a0a0a", cursor:"pointer", minHeight:44 },
+  rowTop: { display:"flex", alignItems:"center", gap:6, fontSize:11 },
+  eng: { fontSize:9, fontWeight:600, letterSpacing:"0.08em" },
+  rowIcon: { fontSize:12 },
+  rowTeam: { fontWeight:600, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:120 },
+  rowMeta: { color:"#444", fontSize:10 },
+  tag: { fontSize:9, fontWeight:600, letterSpacing:"0.05em" },
+  arrow: { color:"#222", fontSize:12, marginLeft:4, fontWeight:300 },
+  rowDetail: { display:"flex", flexDirection:"column", gap:3, marginTop:8, paddingLeft:8, borderLeft:"2px solid #111", fontSize:10, color:"#555" },
+  ticker: { display:"flex", gap:12, overflowX:"auto", padding:"12px 0", fontSize:11, scrollbarWidth:"none", WebkitOverflowScrolling:"touch" },
+  tickItem: { whiteSpace:"nowrap", flexShrink:0 },
+  foot: { marginTop:32, textAlign:"center", fontSize:9, color:"#222" },
+  loading: { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12, height:"70dvh" },
+  spin: { width:16, height:16, border:"2px solid #111", borderTopColor:"#10b981", borderRadius:"50%", animation:"spin .7s linear infinite" },
+};
+
+if (typeof document !== "undefined") {
+  const el = document.createElement("style");
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+    @keyframes spin{to{transform:rotate(360deg)}}
+    *{margin:0;padding:0;box-sizing:border-box}
+    html{font-size:16px;-webkit-text-size-adjust:100%}
+    body{background:#000;overflow-x:hidden}
+    ::-webkit-scrollbar{width:0;height:0}
+    button:active{opacity:.7}
+  `;
+  document.head.appendChild(el);
 }
