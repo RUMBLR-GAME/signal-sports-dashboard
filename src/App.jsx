@@ -1,161 +1,465 @@
-import{useState,useEffect,useCallback,useRef}from"react";
+import{useState,useEffect,useCallback,useMemo}from"react";
 
 const API="https://web-production-72709.up.railway.app/api/state";
-const P=3000;
-const M="'DM Mono',monospace";
-const S="'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif";
-const fmt=i=>!i?"—":new Date(i).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
-const fmtShort=i=>!i?"—":new Date(i).toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-const ic={nba:"🏀",nhl:"🏒",mlb:"⚾",nfl:"🏈",ncaab:"🏀",ncaaf:"🏈",wnba:"🏀",epl:"⚽",mls:"⚽",liga:"⚽",BTC:"₿",ETH:"⟠",SOL:"◎"};
-const lc={blowout:"#16A34A",strong:"#2563EB",safe:"#CA8A04",final:"#9333EA",snipe:"#0891B2",synth:"#7C3AED",moderate:"#2563EB",weak:"#CA8A04"};
-const lb={blowout:"#DCFCE7",strong:"#DBEAFE",safe:"#FEF9C3",final:"#F3E8FF",snipe:"#CFFAFE",synth:"#EDE9FE",moderate:"#DBEAFE",weak:"#FEF9C3"};
+const CLOB_API=API.replace("/api/state","/api/clob-status");
+const POLL=2500;
 
-function Spark({data=[],w=240,h=48,color="#16A34A"}){
-  if(data.length<2)return<div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"#D4D4D8",fontSize:10,fontFamily:M}}>awaiting data...</div>;
-  const mn=Math.min(...data),mx=Math.max(...data),r=mx-mn||1,pad=2;
+/* ── helpers ── */
+const $=v=>v==null?"—":typeof v==="number"?v.toFixed(2):v;
+const ts=i=>!i?"":new Date(i).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const tsf=i=>!i?"":new Date(i).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+const pnlC=v=>v>0?"var(--g)":v<0?"var(--r)":"var(--m)";
+const pnlS=v=>v==null?"—":`${v>0?"+":""}$${v.toFixed(2)}`;
+const pctS=v=>v==null?"—":`${v>0?"+":""}${(v*100).toFixed(1)}%`;
+const ic={nba:"🏀",nhl:"🏒",mlb:"⚾",nfl:"🏈",ncaab:"🏀",ncaaf:"🏈",wnba:"🏀",epl:"⚽",mls:"⚽",liga:"⚽",BTC:"₿",ETH:"Ξ",SOL:"◎"};
+
+export default function App(){
+  const[s,setS]=useState(null);
+  const[conn,setConn]=useState(false);
+  const[tab,setTab]=useState("overview");
+  const[eqH,setEqH]=useState([]);
+  const[clob,setClob]=useState("?");
+  const[now,setNow]=useState(Date.now());
+
+  /* poll state */
+  const poll=useCallback(async()=>{
+    try{const r=await fetch(API);if(!r.ok)throw 0;
+    const d=await r.json();setS(d);setConn(true);
+    setEqH(p=>[...p.slice(-199),{t:Date.now(),eq:d.equity||0,pnl:d.pnl||0}]);
+    }catch{setConn(false)}
+  },[]);
+  useEffect(()=>{poll();const t=setInterval(poll,POLL);return()=>clearInterval(t)},[poll]);
+  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(t)},[]);
+  useEffect(()=>{
+    const chk=async()=>{try{const r=await fetch(CLOB_API);if(r.ok){const d=await r.json();setClob(d.status==="ok"?"ok":d.status==="no_market"?"idle":"err")}}catch{setClob("err")}};
+    chk();const t=setInterval(chk,30000);return()=>clearInterval(t);
+  },[]);
+
+  const d=s||{};
+  const eq=d.equity||0,pnl=d.pnl||0,wr=d.win_rate||0,roi=d.roi||0;
+  const trades=d.trade_history||[],logs=d.log||[],games=d.verified_games||[];
+  const targets=d.harvest_targets||[],signals=d.synth_signals||[];
+  const openPos=d.open_positions||[],eng=d.engines||{};
+  const hExp=d.harvest_exposure||0,sExp=d.synth_exposure||0;
+
+  /* derived stats */
+  const hTrades=trades.filter(t=>t.engine==="harvest");
+  const sTrades=trades.filter(t=>t.engine==="synth");
+  const hWins=hTrades.filter(t=>t.status==="won").length;
+  const sWins=sTrades.filter(t=>t.status==="won").length;
+  const hResolved=hTrades.filter(t=>t.status==="won"||t.status==="lost");
+  const sResolved=sTrades.filter(t=>t.status==="won"||t.status==="lost");
+  const hPnl=hResolved.reduce((a,t)=>a+(t.pnl||0),0);
+  const sPnl=sResolved.reduce((a,t)=>a+(t.pnl||0),0);
+
+  /* countdown to next 5min window */
+  const nowS=Math.floor(now/1000);
+  const next5=Math.ceil(nowS/300)*300;
+  const next15=Math.ceil(nowS/900)*900;
+  const to5=next5-nowS;
+  const to15=next15-nowS;
+  const fmtCD=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+
+  const tabs=[
+    {id:"overview",l:"Overview"},
+    {id:"feed",l:"Live Feed"},
+    {id:"crypto",l:"Crypto"},
+    {id:"harvest",l:"Harvest"},
+    {id:"positions",l:"Positions"},
+  ];
+
+return(
+<div className="root">
+<style>{`
+:root{--bg:#0C0E14;--s1:#13151E;--s2:#1A1D2B;--s3:#242838;--b:#2E3348;
+--t:#E8EAF0;--m:#7B819A;--d:#4A4F6A;--g:#00E676;--gd:#0A3D2A;
+--r:#FF3D57;--rd:#3D0A16;--a:#FFB300;--bl:#448AFF;--p:#B388FF;
+--mono:'JetBrains Mono','Fira Code','SF Mono',monospace;
+--sans:'Satoshi','General Sans',-apple-system,system-ui,sans-serif;
+--rad:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{margin:0;background:var(--bg);color:var(--t)}
+.root{font-family:var(--sans);min-height:100vh;background:var(--bg)}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:var(--s3);border-radius:3px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes glow{0%,100%{box-shadow:0 0 8px var(--g)22}50%{box-shadow:0 0 20px var(--g)44}}
+.fu{animation:fadeUp .3s ease-out both}
+.pu{animation:pulse 2s infinite}
+@media(max-width:800px){.rg{grid-template-columns:1fr!important}.hd{display:none!important}}
+`}</style>
+
+{/* ══ HEADER ══ */}
+<header style={{background:conn?"var(--s1)":"var(--rd)",borderBottom:"1px solid var(--b)",padding:"0 20px",height:48,display:"flex",alignItems:"center",justifyContent:"space-between",transition:"background .3s"}}>
+  <div style={{display:"flex",alignItems:"center",gap:12}}>
+    <span style={{fontSize:15,fontWeight:800,letterSpacing:"-.03em",color:"var(--t)"}}>SIGNAL</span>
+    <span style={{fontSize:10,color:"var(--d)",letterSpacing:".1em",fontWeight:500}}>v2</span>
+  </div>
+  <div style={{display:"flex",alignItems:"center",gap:16}}>
+    {/* countdown timers */}
+    <div style={{display:"flex",gap:12,fontFamily:"var(--mono)",fontSize:10,color:"var(--m)"}}>
+      <span title="Next 5-min window close">5m <span style={{color:to5<=20?"var(--g)":"var(--d)",fontWeight:to5<=20?700:400}}>{fmtCD(to5)}</span></span>
+      <span title="Next 15-min window close">15m <span style={{color:to15<=30?"var(--g)":"var(--d)",fontWeight:to15<=30?700:400}}>{fmtCD(to15)}</span></span>
+    </div>
+    <div style={{width:1,height:20,background:"var(--b)"}}/>
+    {/* status dots */}
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <Dot on={conn} c="var(--g)" label="API"/>
+      <Dot on={eng.harvest} c="var(--g)" label="H"/>
+      <Dot on={eng.synth} c="var(--bl)" label="S"/>
+      <Dot on={clob==="ok"||clob==="idle"} c={clob==="ok"?"var(--g)":"var(--a)"} label="CLOB"/>
+    </div>
+  </div>
+</header>
+
+{/* ══ NAV ══ */}
+<nav style={{background:"var(--s1)",borderBottom:"1px solid var(--b)",padding:"0 20px",display:"flex",gap:0,overflowX:"auto"}}>
+  {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{
+    fontSize:11,fontFamily:"var(--sans)",fontWeight:tab===t.id?600:400,
+    padding:"10px 18px",background:"none",border:"none",cursor:"pointer",
+    color:tab===t.id?"var(--t)":"var(--d)",
+    borderBottom:tab===t.id?"2px solid var(--g)":"2px solid transparent",
+    whiteSpace:"nowrap",transition:"all .15s"
+  }}>{t.l}</button>)}
+</nav>
+
+<main style={{maxWidth:1200,margin:"0 auto",padding:"16px 20px 80px"}}>
+
+{/* ══ OVERVIEW TAB ══ */}
+{tab==="overview"&&<>
+  {/* top stats row */}
+  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:16}} className="rg">
+    <StatCard label="EQUITY" value={`$${eq.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub={`from $${d.starting||1000}`} color={pnl>=0?"var(--g)":"var(--r)"}/>
+    <StatCard label="P&L" value={pnlS(pnl)} color={pnlC(pnl)} sub={`ROI ${roi>=0?"+":""}${roi.toFixed(1)}%`}/>
+    <StatCard label="WIN RATE" value={`${(wr*100).toFixed(1)}%`} sub={`${d.wins||0}W / ${(d.trades||0)-(d.wins||0)}L`} color="var(--t)"/>
+    <StatCard label="OPEN" value={openPos.length} sub={`$${Math.round(d.exposure||0)} exposed`} color="var(--bl)"/>
+    <StatCard label="DRAWDOWN" value={`${(d.drawdown||0).toFixed(1)}%`} sub={`HWM $${(d.hwm||eq).toFixed(0)}`} color={(d.drawdown||0)>5?"var(--r)":"var(--m)"}/>
+  </div>
+
+  {/* equity sparkline */}
+  {eqH.length>2&&<div style={{...card,padding:"12px 16px",marginBottom:16}}>
+    <div style={{fontSize:10,color:"var(--d)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Equity Curve</div>
+    <Sparkline data={eqH.map(h=>h.eq)} color={pnl>=0?"var(--g)":"var(--r)"} h={60}/>
+  </div>}
+
+  {/* two-column: engine stats */}
+  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}} className="rg">
+    <div style={card}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+        <Dot on={eng.harvest} c="var(--g)"/><span style={{fontSize:13,fontWeight:700}}>Harvest</span>
+        <span style={{marginLeft:"auto",fontSize:10,color:"var(--d)",fontFamily:"var(--mono)"}}>Exp: ${hExp.toFixed(0)}</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+        <MiniStat label="Trades" value={d.harvest_trades||0}/>
+        <MiniStat label="Win Rate" value={hResolved.length?`${(hWins/hResolved.length*100).toFixed(0)}%`:"—"}/>
+        <MiniStat label="P&L" value={pnlS(hPnl)} color={pnlC(hPnl)}/>
+      </div>
+      {games.filter(g=>g.level!=="final").length>0&&<div style={{marginTop:10,fontSize:10,color:"var(--g)",fontFamily:"var(--mono)"}}>
+        {games.filter(g=>g.level!=="final").length} live games monitored
+      </div>}
+    </div>
+    <div style={card}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+        <Dot on={eng.synth} c="var(--bl)"/><span style={{fontSize:13,fontWeight:700}}>Crypto</span>
+        <span style={{marginLeft:"auto",fontSize:10,color:"var(--d)",fontFamily:"var(--mono)"}}>Exp: ${sExp.toFixed(0)}</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+        <MiniStat label="Trades" value={d.synth_trades||0}/>
+        <MiniStat label="Win Rate" value={sResolved.length?`${(sWins/sResolved.length*100).toFixed(0)}%`:"—"}/>
+        <MiniStat label="P&L" value={pnlS(sPnl)} color={pnlC(sPnl)}/>
+      </div>
+      <div style={{marginTop:10,display:"flex",gap:12,fontSize:10,fontFamily:"var(--mono)"}}>
+        <span style={{color:to5<=20?"var(--g)":"var(--d)"}}>5m: {fmtCD(to5)}</span>
+        <span style={{color:to15<=30?"var(--g)":"var(--d)"}}>15m: {fmtCD(to15)}</span>
+        <span style={{color:clob==="ok"?"var(--g)":"var(--d)"}}>CLOB {clob==="ok"?"✓":"○"}</span>
+      </div>
+    </div>
+  </div>
+
+  {/* open positions */}
+  {openPos.length>0&&<>
+    <SectionTitle>Open Positions ({openPos.length})</SectionTitle>
+    <div style={{...card,padding:0,marginBottom:16}}>
+      {openPos.map((p,i)=><div key={i} className="fu" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid var(--s3)"}}>
+        <span style={{fontSize:14}}>{ic[p.sport]||"🎯"}</span>
+        <EngBadge engine={p.engine}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:600}}>{p.outcome}</div>
+          <div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.detail}</div>
+        </div>
+        <div style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:11}}>
+          <div style={{fontWeight:600}}>${(p.entry_price||0).toFixed(4)} × {p.shares}</div>
+          <div style={{color:"var(--d)",fontSize:9,marginTop:2}}>{ts(p.entry_time)}</div>
+        </div>
+      </div>)}
+    </div>
+  </>}
+
+  {/* recent trades */}
+  <SectionTitle>Recent Activity</SectionTitle>
+  <div style={{...card,padding:0}}>
+    {trades.length===0&&<div style={{padding:40,textAlign:"center",color:"var(--d)",fontSize:12}}>Waiting for first trade…</div>}
+    {trades.slice(0,15).map((t,i)=><TradeRow key={t.id||i} t={t}/>)}
+  </div>
+</>}
+
+{/* ══ LIVE FEED TAB ══ */}
+{tab==="feed"&&<>
+  <SectionTitle>Engine Log</SectionTitle>
+  <div style={{...card,padding:0,maxHeight:600,overflowY:"auto"}}>
+    {logs.length===0&&<div style={{padding:40,textAlign:"center",color:"var(--d)",fontSize:12}}>Waiting for activity…</div>}
+    {logs.map((l,i)=><div key={i} style={{padding:"6px 14px",borderBottom:"1px solid var(--s3)",fontFamily:"var(--mono)",fontSize:11,color:"var(--m)",lineHeight:1.6}}>
+      <span style={{color:"var(--d)",marginRight:10}}>{ts(l.t)}</span>
+      <span style={{color:l.m.includes("✓")?"var(--g)":l.m.includes("✗")?"var(--r)":l.m.includes("SNIPE")||l.m.includes("HARVEST")?"var(--a)":"var(--m)"}}>{l.m}</span>
+    </div>)}
+  </div>
+</>}
+
+{/* ══ CRYPTO TAB ══ */}
+{tab==="crypto"&&<>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:16,fontWeight:700}}>Crypto Engine</span>
+      <StatusPill on={clob==="ok"||clob==="idle"} label={clob==="ok"?"CLOB LIVE":clob==="idle"?"CLOB IDLE":"CLOB OFF"} color={clob==="ok"?"var(--g)":"var(--a)"}/>
+    </div>
+    <div style={{display:"flex",gap:14,fontFamily:"var(--mono)",fontSize:11}}>
+      <span style={{color:to5<=20?"var(--g)":"var(--d)"}}>5m {fmtCD(to5)}{to5<=20&&<span className="pu" style={{color:"var(--g)",marginLeft:4}}>● HOT</span>}</span>
+      <span style={{color:to15<=30?"var(--g)":"var(--d)"}}>15m {fmtCD(to15)}{to15<=30&&<span className="pu" style={{color:"var(--g)",marginLeft:4}}>● HOT</span>}</span>
+    </div>
+  </div>
+
+  {/* live signals */}
+  {signals.length>0&&<>
+    <SectionTitle>Live Signals</SectionTitle>
+    <div style={{display:"grid",gap:8,marginBottom:16}}>
+      {signals.map((sg,i)=><div key={i} className="fu" style={{...card,padding:"12px 14px",borderLeft:`3px solid ${sg.layer==="arb"?"var(--a)":sg.direction==="up"?"var(--g)":"var(--r)"}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>{ic[sg.asset]||"🪙"}</span>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:13,fontWeight:700}}>{sg.asset}</span>
+              <LayerBadge layer={sg.layer}/>
+              <span style={{fontSize:10,color:"var(--d)"}}>{sg.timeframe}</span>
+            </div>
+            <div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2}}>
+              {sg.shares}× @ ${(sg.price||0).toFixed(4)} = ${(sg.cost||0).toFixed(2)}
+            </div>
+          </div>
+          <div style={{marginLeft:"auto",textAlign:"right"}}>
+            <div style={{fontFamily:"var(--mono)",fontSize:14,fontWeight:700,color:sg.direction==="up"?"var(--g)":sg.direction==="down"?"var(--r)":"var(--a)"}}>
+              {sg.direction?.toUpperCase()}
+            </div>
+            <div style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--m)",marginTop:2}}>
+              EV: {sg.ev!=null?`+${(sg.ev*100).toFixed(1)}¢`:"—"} · {sg.priceSource==="clob"?"LIVE":"EST"}
+            </div>
+          </div>
+        </div>
+      </div>)}
+    </div>
+  </>}
+  {signals.length===0&&<div style={{...card,textAlign:"center",padding:32,color:"var(--d)",fontSize:12,marginBottom:16}}>
+    {eng.synth?"Scanning… next window in "+fmtCD(Math.min(to5,to15)):"Engine offline"}
+  </div>}
+
+  {/* crypto trade history */}
+  <SectionTitle>Crypto Trades ({sTrades.length})</SectionTitle>
+  <div style={{...card,padding:0}}>
+    {sTrades.length===0&&<div style={{padding:32,textAlign:"center",color:"var(--d)",fontSize:12}}>No crypto trades yet</div>}
+    {sTrades.slice(0,30).map((t,i)=><TradeRow key={t.id||i} t={t}/>)}
+  </div>
+</>}
+
+{/* ══ HARVEST TAB ══ */}
+{tab==="harvest"&&<>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+    <span style={{fontSize:16,fontWeight:700}}>Harvest Engine</span>
+    <span style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)"}}>{games.filter(g=>g.level!=="final").length} live · {games.length} total</span>
+  </div>
+
+  {/* live games */}
+  {games.filter(g=>g.level!=="final").length>0&&<>
+    <SectionTitle>Live Verified Games</SectionTitle>
+    <div style={{display:"grid",gap:6,marginBottom:16}}>
+      {games.filter(g=>g.level!=="final").map((g,i)=><div key={i} className="fu" style={{...card,padding:"10px 14px",borderLeft:`3px solid ${g.level==="blowout"?"var(--g)":g.level==="strong"?"var(--bl)":"var(--a)"}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:16}}>{ic[g.sport]||"🎮"}</span>
+          <div>
+            <div style={{fontFamily:"var(--mono)",fontSize:12,fontWeight:600}}>{g.scoreLine}</div>
+            <div style={{fontSize:10,color:"var(--d)",marginTop:2}}>{g.period} {g.clock} · {g.leader} +{g.lead}</div>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontFamily:"var(--mono)",fontSize:11,color:g.confidence>=0.995?"var(--g)":"var(--bl)"}}>
+              {(g.confidence*100).toFixed(1)}%
+            </span>
+            <LevelBadge level={g.level}/>
+          </div>
+        </div>
+      </div>)}
+    </div>
+  </>}
+
+  {/* targets */}
+  {targets.length>0&&<>
+    <SectionTitle>Harvest Targets ({targets.length})</SectionTitle>
+    <div style={{display:"grid",gap:6,marginBottom:16}}>
+      {targets.map((t,i)=><div key={i} className="fu" style={{...card,padding:"10px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:14}}>{ic[t.sport]||"🎮"}</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:600}}>{t.outcome}</div>
+            <div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2}}>{t.scoreLine}</div>
+          </div>
+          <div style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:11}}>
+            <div style={{fontWeight:700,color:"var(--g)"}}>${(t.price||0).toFixed(4)} → +{((t.return||0)*100).toFixed(1)}%</div>
+            <div style={{fontSize:9,color:"var(--d)",marginTop:2}}>
+              EV:{t.ev!=null?`+${(t.ev*100).toFixed(1)}¢`:"—"} · {t.priceSource==="clob"?"LIVE":"GAMMA"}
+            </div>
+          </div>
+          <LevelBadge level={t.level}/>
+        </div>
+      </div>)}
+    </div>
+  </>}
+
+  {/* harvest trades */}
+  <SectionTitle>Harvest Trades ({hTrades.length})</SectionTitle>
+  <div style={{...card,padding:0}}>
+    {hTrades.length===0&&<div style={{padding:32,textAlign:"center",color:"var(--d)",fontSize:12}}>No harvest trades yet</div>}
+    {hTrades.slice(0,30).map((t,i)=><TradeRow key={t.id||i} t={t}/>)}
+  </div>
+</>}
+
+{/* ══ POSITIONS TAB ══ */}
+{tab==="positions"&&<>
+  <SectionTitle>Open Positions ({openPos.length})</SectionTitle>
+  {openPos.length===0&&<div style={{...card,textAlign:"center",padding:32,color:"var(--d)",fontSize:12}}>No open positions</div>}
+  {openPos.map((p,i)=><div key={i} className="fu" style={{...card,padding:"12px 14px",marginBottom:8,borderLeft:`3px solid ${p.engine==="harvest"?"var(--g)":"var(--bl)"}`}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:16}}>{ic[p.sport]||"🎯"}</span>
+      <EngBadge engine={p.engine}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:600}}>{p.outcome}</div>
+        <div style={{fontSize:10,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.detail}</div>
+      </div>
+      <div style={{textAlign:"right",fontFamily:"var(--mono)"}}>
+        <div style={{fontSize:13,fontWeight:700}}>{p.shares}× @ ${(p.entry_price||0).toFixed(4)}</div>
+        <div style={{fontSize:11,color:"var(--m)"}}>Cost: ${(p.cost_basis||0).toFixed(2)}</div>
+        <div style={{fontSize:9,color:"var(--d)",marginTop:2}}>{tsf(p.entry_time)}</div>
+      </div>
+    </div>
+  </div>)}
+
+  <SectionTitle style={{marginTop:20}}>Resolved ({trades.filter(t=>t.status==="won"||t.status==="lost").length})</SectionTitle>
+  <div style={{...card,padding:0}}>
+    {trades.filter(t=>t.status==="won"||t.status==="lost").slice(0,50).map((t,i)=><TradeRow key={t.id||i} t={t}/>)}
+  </div>
+</>}
+
+</main>
+</div>
+);
+}
+
+/* ══ COMPONENTS ══ */
+
+function Dot({on,c,label}){return(
+  <div style={{display:"flex",alignItems:"center",gap:3}} title={label}>
+    <span style={{width:6,height:6,borderRadius:3,background:on?c:"var(--d)",display:"block",transition:"background .3s",boxShadow:on?`0 0 6px ${c}66`:""}}/>
+    <span style={{fontSize:9,color:on?c:"var(--d)",fontFamily:"var(--mono)",fontWeight:500}}>{label}</span>
+  </div>
+)}
+
+function StatCard({label,value,sub,color}){return(
+  <div style={{background:"var(--s1)",border:"1px solid var(--s3)",borderRadius:"var(--rad)",padding:"12px 14px"}}>
+    <div style={{fontSize:9,color:"var(--d)",letterSpacing:".08em",textTransform:"uppercase",fontWeight:500,marginBottom:4}}>{label}</div>
+    <div style={{fontSize:20,fontWeight:800,fontFamily:"var(--mono)",color:color||"var(--t)",lineHeight:1.2}}>{value}</div>
+    {sub&&<div style={{fontSize:10,color:"var(--d)",marginTop:4,fontFamily:"var(--mono)"}}>{sub}</div>}
+  </div>
+)}
+
+function MiniStat({label,value,color}){return(
+  <div>
+    <div style={{fontSize:9,color:"var(--d)",letterSpacing:".05em",textTransform:"uppercase"}}>{label}</div>
+    <div style={{fontSize:14,fontWeight:700,fontFamily:"var(--mono)",color:color||"var(--t)",marginTop:2}}>{value}</div>
+  </div>
+)}
+
+function SectionTitle({children,style:sx}){return(
+  <div style={{fontSize:11,fontWeight:600,color:"var(--d)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:8,...sx}}>{children}</div>
+)}
+
+function EngBadge({engine}){
+  const h=engine==="harvest";
+  return<span style={{fontSize:9,fontWeight:600,padding:"2px 7px",borderRadius:4,
+    background:h?"var(--gd)":"#0A1A3D",color:h?"var(--g)":"var(--bl)",
+    textTransform:"uppercase",letterSpacing:".04em"}}>{engine}</span>
+}
+
+function LayerBadge({layer}){
+  const cols={snipe:{bg:"#0A3D2A",c:"var(--g)"},synth:{bg:"#1A0A3D",c:"var(--p)"},arb:{bg:"#3D2A0A",c:"var(--a)"}};
+  const s=cols[layer]||cols.snipe;
+  return<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:3,background:s.bg,color:s.c,textTransform:"uppercase",letterSpacing:".05em"}}>{layer}</span>
+}
+
+function LevelBadge({level}){
+  const cols={blowout:{bg:"var(--gd)",c:"var(--g)"},strong:{bg:"#0A1A3D",c:"var(--bl)"},safe:{bg:"#3D2A0A",c:"var(--a)"},final:{bg:"#1A0A3D",c:"var(--p)"}};
+  const s=cols[level]||{bg:"var(--s3)",c:"var(--d)"};
+  return<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:3,background:s.bg,color:s.c,textTransform:"uppercase",letterSpacing:".05em"}}>{level}</span>
+}
+
+function StatusPill({on,label,color}){return(
+  <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:10,background:on?`${color}18`:"var(--s3)",fontSize:9,fontWeight:600,fontFamily:"var(--mono)"}}>
+    <span style={{width:5,height:5,borderRadius:3,background:on?color:"var(--d)"}}/>
+    <span style={{color:on?color:"var(--d)"}}>{label}</span>
+  </div>
+)}
+
+function TradeRow({t}){
+  const w=t.status==="won",l=t.status==="lost",o=!w&&!l;
+  const ac=w?"var(--g)":l?"var(--r)":"var(--bl)";
+  const bg=w?"var(--gd)":l?"var(--rd)":"transparent";
+  return(
+    <div className="fu" style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderBottom:"1px solid var(--s3)",background:bg,transition:"background .2s"}}>
+      <span style={{width:20,height:20,borderRadius:5,background:`${ac}22`,color:ac,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{w?"✓":l?"✗":"▸"}</span>
+      <span style={{fontSize:14}}>{ic[t.sport]||"🎯"}</span>
+      <EngBadge engine={t.engine||"synth"}/>
+      {t.layer&&<LayerBadge layer={t.layer}/>}
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.outcome||t.event||"Trade"}</div>
+        <div style={{fontSize:9,color:"var(--d)",fontFamily:"var(--mono)",marginTop:2}}>
+          {t.timeframe?`${t.timeframe} · `:""}
+          {t.scoreLine||""}
+          {t.ev!=null&&t.ev!==0?` · EV:+${(t.ev*100).toFixed(1)}¢`:""}
+          {t.priceSource?` · ${t.priceSource==="clob"?"LIVE":t.priceSource==="gamma"?"GAMMA":"EST"}`:""}
+        </div>
+      </div>
+      <div style={{textAlign:"right",flexShrink:0,fontFamily:"var(--mono)"}}>
+        <div style={{fontSize:12,fontWeight:600}}>${(t.entryPrice||0).toFixed(t.priceSource==="clob"?4:2)}</div>
+        {t.pnl!=null&&<div style={{fontSize:12,fontWeight:700,color:ac,marginTop:1}}>{pnlS(t.pnl)}</div>}
+      </div>
+      <div style={{textAlign:"right",flexShrink:0,minWidth:44}}>
+        {!o&&<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:3,background:`${ac}22`,color:ac,textTransform:"uppercase"}}>{t.status}</span>}
+        {o&&<span style={{fontSize:8,fontWeight:600,padding:"2px 6px",borderRadius:3,background:"var(--s3)",color:"var(--bl)",textTransform:"uppercase"}}>open</span>}
+        <div style={{fontSize:8,color:"var(--d)",fontFamily:"var(--mono)",marginTop:3}}>{ts(t.timestamp)}</div>
+      </div>
+    </div>
+  )
+}
+
+function Sparkline({data=[],color="var(--g)",h=48}){
+  if(data.length<2)return<div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--d)",fontSize:10,fontFamily:"var(--mono)"}}>awaiting data…</div>;
+  const w=600;const pad=2;
+  const mn=Math.min(...data),mx=Math.max(...data),r=mx-mn||1;
   const pts=data.map((v,i)=>({x:pad+(i/(data.length-1))*(w-pad*2),y:h-pad-((v-mn)/r)*(h-pad*2)}));
   const d=pts.map(p=>`${p.x},${p.y}`).join(" ");const last=pts[pts.length-1];
+  const uid=`sp${Math.random().toString(36).slice(2,6)}`;
   return<svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{display:"block"}}>
-    <defs><linearGradient id={`g${color.slice(1)}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".10"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
-    <polygon points={`${pts[0].x},${h} ${d} ${last.x},${h}`} fill={`url(#g${color.slice(1)})`}/>
+    <defs><linearGradient id={uid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".15"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
+    <polygon points={`${pts[0].x},${h} ${d} ${last.x},${h}`} fill={`url(#${uid})`}/>
     <polyline points={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx={last.x} cy={last.y} r="2.5" fill={color}/>
+    <circle cx={last.x} cy={last.y} r="3" fill={color}><animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite"/></circle>
   </svg>;
 }
 
-function Dot({on=false,color="#16A34A"}){return<span style={{width:6,height:6,borderRadius:3,background:on?color:"#D4D4D8",display:"inline-block",boxShadow:on?`0 0 6px ${color}40`:""}}/>}
-function Badge({text,bg="#F4F4F5",color="#71717A"}){return<span style={{fontSize:9,fontWeight:600,padding:"2px 7px",borderRadius:4,background:bg,color,textTransform:"uppercase",letterSpacing:".03em",whiteSpace:"nowrap"}}>{text}</span>}
-function EngineBadge({engine}){const h=engine==="harvest";return<Badge text={engine} bg={h?"#DCFCE7":"#DBEAFE"} color={h?"#166534":"#1E40AF"}/>}
-function StatusBadge({status}){const w=status==="won",l=status==="lost";return<Badge text={status||"open"} bg={w?"#DCFCE7":l?"#FEE2E2":"#F4F4F5"} color={w?"#166534":l?"#991B1B":"#71717A"}/>}
-function PriceBadge({source}){if(!source||source==="estimate")return<Badge text="EST" bg="#FEF3C7" color="#92400E"/>;if(source==="clob")return<Badge text="LIVE" bg="#D1FAE5" color="#065F46"/>;if(source==="synth")return<Badge text="SYNTH" bg="#EDE9FE" color="#5B21B6"/>;return null}
-function SpreadDot({spread}){if(spread==null||spread===0)return null;const c=spread<0.03?"#16A34A":spread<0.07?"#CA8A04":"#DC2626";return<span style={{fontSize:9,fontFamily:M,color:c,marginLeft:4}}>spread:{(spread*100).toFixed(1)}%</span>}
-
-export default function App(){
-  const[s,setS]=useState(null);const[conn,setConn]=useState(false);const[tab,setTab]=useState("feed");
-  const[eqH,setEqH]=useState([]);const[pnlH,setPnlH]=useState([]);
-  const[clobSt,setClobSt]=useState("unknown");
-
-  const poll=useCallback(async()=>{try{const r=await fetch(API);if(!r.ok)throw 0;const d=await r.json();setS(d);setConn(true);setEqH(p=>[...p.slice(-119),d.equity||0]);setPnlH(p=>[...p.slice(-119),d.pnl||0])}catch{setConn(false)}},[]);
-  useEffect(()=>{poll();const t=setInterval(poll,P);return()=>clearInterval(t)},[poll]);
-  useEffect(()=>{const chk=async()=>{try{const r=await fetch(API.replace("/api/state","/api/clob-status"));if(r.ok){const d=await r.json();setClobSt(d.status==="ok"?"ok":"err")}}catch{setClobSt("err")}};chk();const t=setInterval(chk,30000);return()=>clearInterval(t)},[]);
-
-  const d=s||{};const eq=d.equity||0;const pnl=d.pnl||0;const wr=d.win_rate||0;
-  const trades=d.trade_history||[];const log=d.log||[];const games=d.verified_games||[];
-  const targets=d.harvest_targets||[];const signals=d.synth_signals||[];const openPos=d.open_positions||[];const eng=d.engines||{};
-
-  const tabs=[{id:"feed",l:"Live Feed"},{id:"harvest",l:"Harvest"},{id:"synth",l:"Crypto"},{id:"positions",l:"Positions"},{id:"history",l:"History"},{id:"about",l:"About"}];
-
-  return<div style={{fontFamily:S,background:"#FAFAFA",minHeight:"100vh",color:"#18181B"}}>
-    <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}.fi{animation:fadeIn .25s ease-out}*{box-sizing:border-box;margin:0}body{margin:0}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:#E4E4E7;border-radius:2px}@media(max-width:768px){.g1{grid-template-columns:1fr!important}.hm{display:none!important}.ow{overflow-x:auto}}`}</style>
-
-    <header style={{background:"#18181B",padding:"0 24px",display:"flex",alignItems:"center",justifyContent:"space-between",height:48}}>
-      <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{color:"#FAFAFA",fontSize:14,fontWeight:700,letterSpacing:"-0.02em"}}>SIGNAL</span><span style={{color:"#52525B",fontSize:11,letterSpacing:".08em"}}>HARVEST + SYNTH</span></div>
-      <div style={{display:"flex",alignItems:"center",gap:10}}><Dot on={conn} color={conn?"#22C55E":"#EF4444"}/><span style={{color:"#A1A1AA",fontSize:10,fontFamily:M}}>{conn?"LIVE":"OFFLINE"}</span></div>
-    </header>
-
-    {conn&&<div style={{background:"#fff",borderBottom:"1px solid #E4E4E7",padding:"12px 24px"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}} className="g1">
-      <div><div style={kl}>Equity</div><div style={{fontSize:22,fontWeight:700,fontFamily:M}}>${Math.round(eq).toLocaleString()}</div><Spark data={eqH} color={pnl>=0?"#16A34A":"#DC2626"}/></div>
-      <div><div style={kl}>P&L</div><div style={{fontSize:22,fontWeight:700,fontFamily:M,color:pnl>=0?"#16A34A":"#DC2626"}}>{pnl>=0?"+":""}${pnl.toFixed(2)}</div><Spark data={pnlH} color={pnl>=0?"#16A34A":"#DC2626"}/></div>
-      <div><div style={kl}>Win Rate</div><div style={{fontSize:22,fontWeight:700,fontFamily:M}}>{(wr*100).toFixed(1)}%</div><div style={{fontSize:10,color:"#A1A1AA",marginTop:2}}>{d.wins||0}W / {(d.trades||0)-(d.wins||0)}L of {d.trades||0}</div></div>
-      <div><div style={kl}>ROI</div><div style={{fontSize:22,fontWeight:700,fontFamily:M,color:(d.roi||0)>=0?"#16A34A":"#DC2626"}}>{(d.roi||0)>=0?"+":""}{(d.roi||0).toFixed(1)}%</div><div style={{fontSize:10,color:"#A1A1AA",marginTop:2}}>from ${d.starting||1000}</div></div>
-      <div><div style={kl}>Engines</div><div style={{display:"flex",gap:8,marginTop:4}}><div style={{display:"flex",alignItems:"center",gap:4}}><Dot on={eng.harvest} color="#16A34A"/><span style={{fontSize:11,color:eng.harvest?"#18181B":"#D4D4D8"}}>Harvest</span></div><div style={{display:"flex",alignItems:"center",gap:4}}><Dot on={eng.synth} color="#2563EB"/><span style={{fontSize:11,color:eng.synth?"#18181B":"#D4D4D8"}}>Synth</span></div></div><div style={{fontSize:10,color:"#A1A1AA",marginTop:4}}>Open: {d.open_count||0} · Exp: ${Math.round(d.exposure||0)}</div></div>
-    </div></div>}
-
-    <nav style={{background:"#fff",borderBottom:"1px solid #E4E4E7",padding:"0 24px",display:"flex",gap:0,overflowX:"auto"}}>
-      {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{fontSize:12,fontFamily:S,fontWeight:tab===t.id?600:400,padding:"10px 16px",background:"none",border:"none",cursor:"pointer",color:tab===t.id?"#18181B":"#A1A1AA",borderBottom:tab===t.id?"2px solid #18181B":"2px solid transparent",whiteSpace:"nowrap"}}>{t.l}</button>)}
-    </nav>
-
-    <main style={{maxWidth:1100,margin:"0 auto",padding:"20px 24px 80px"}}>
-
-      {tab==="feed"&&<>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:12}}>
-          <span style={{fontSize:16,fontWeight:700}}>Live Feed</span>
-          <span style={{fontSize:10,color:"#A1A1AA",fontFamily:M}}>{d.last_scan?fmt(d.last_scan):"—"}</span>
-        </div>
-        {openPos.length>0&&<div style={{...card,marginBottom:12,borderLeft:"3px solid #2563EB"}}><div style={{fontSize:11,fontWeight:600,color:"#2563EB",marginBottom:6}}>OPEN ({openPos.length})</div>
-          {openPos.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",fontSize:12}}><span>{ic[p.sport]||"🎯"}</span><EngineBadge engine={p.engine}/><span style={{fontWeight:500}}>{p.outcome}</span><span style={{color:"#A1A1AA",fontFamily:M,fontSize:11}}>@ ${(p.entry_price||0).toFixed(2)} ×{p.shares}</span><span style={{marginLeft:"auto",fontSize:9,color:"#A1A1AA",fontFamily:M}}>{fmtShort(p.entry_time)}</span></div>)}
-        </div>}
-        <div style={{...card,padding:0}}>
-          {!trades.length&&!log.length&&<div style={{padding:40,textAlign:"center",color:"#D4D4D8",fontSize:13}}>Waiting for first trade...</div>}
-          {trades.map((t,i)=>{const w=t.status==="won",l=t.status==="lost",o=!w&&!l;const pc=w?"#16A34A":l?"#DC2626":"#A1A1AA";const bg=w?"#F0FDF4":l?"#FEF2F2":o?"#EFF6FF":"#FAFAFA";
-            return<div key={t.id||i} className="fi" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:"1px solid #F4F4F5",background:bg}}>
-              <span style={{width:22,height:22,borderRadius:6,background:pc+"18",color:pc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{w?"✓":l?"✗":"▶"}</span>
-              <span style={{fontSize:15}}>{ic[t.sport]||"🎯"}</span>
-              <EngineBadge engine={t.engine||"synth"}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.outcome||t.event||"Trade"}</div>
-                <div style={{fontSize:10,color:"#A1A1AA",fontFamily:M,marginTop:1}}>{t.timeframe?`${t.timeframe} · `:""}{t.scoreLine||t.detail||""}{t.edgePct?` · Edge +${typeof t.edgePct==="number"?t.edgePct.toFixed(1):t.edgePct}%`:""}</div>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}><div style={{fontFamily:M,fontSize:12,fontWeight:600}}>@ ${(t.entryPrice||0).toFixed(t.priceSource==="clob"?4:2)}{t.priceSource&&t.engine==="synth"&&<>{" "}<PriceBadge source={t.priceSource}/></>}</div>{t.pnl!=null&&t.pnl!==undefined&&<div style={{fontFamily:M,fontSize:12,fontWeight:700,color:pc}}>{t.pnl>0?"+":""}${t.pnl.toFixed(2)}</div>}</div>
-              <div style={{textAlign:"right",flexShrink:0,minWidth:50}}><StatusBadge status={t.status}/><div style={{fontSize:9,color:"#D4D4D8",fontFamily:M,marginTop:2}}>{fmtShort(t.timestamp)}</div></div>
-            </div>})}
-          {log.length>0&&<div style={{borderTop:trades.length?"1px solid #E4E4E7":"none"}}><div style={{padding:"8px 16px",fontSize:10,fontWeight:600,color:"#A1A1AA",background:"#FAFAFA"}}>ENGINE LOG</div>
-            {log.slice(0,30).map((l,i)=><div key={i} style={{padding:"5px 16px",fontSize:11,color:"#71717A",fontFamily:M,borderBottom:"1px solid #FAFAFA",lineHeight:1.5}}><span style={{color:"#D4D4D8",marginRight:8}}>{fmtShort(l.t)}</span>{l.m}</div>)}
-          </div>}
-        </div>
-      </>}
-
-      {tab==="harvest"&&<>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:12}}><span style={{fontSize:16,fontWeight:700}}>ESPN Verified Games</span><span style={{fontSize:10,color:"#A1A1AA"}}>{games.filter(g=>g.level!=="final").length} live · {games.length} total</span></div>
-        {!games.length&&<div style={empty}>No verified games</div>}
-        {games.length>0&&<div style={{...card,padding:0}} className="ow">
-          <div style={{...th,gridTemplateColumns:"36px 1fr 80px 44px 60px 64px",minWidth:400}}><span></span><span>Score</span><span>Status</span><span>Lead</span><span>Conf</span><span>Level</span></div>
-          {games.filter(g=>g.level!=="final").concat(games.filter(g=>g.level==="final")).slice(0,20).map((g,i)=><div key={i} className="fi" style={{...tr,gridTemplateColumns:"36px 1fr 80px 44px 60px 64px",minWidth:400,opacity:g.level==="final"?0.45:1}}>
-            <span>{ic[g.sport]||"🎮"}</span><span style={{fontFamily:M,fontSize:11,fontWeight:500}}>{g.scoreLine}</span><span style={{fontSize:10,color:"#A1A1AA"}}>{g.period} {g.clock}</span><span style={{fontFamily:M,fontWeight:600,color:"#16A34A",fontSize:12}}>+{g.lead}</span><span style={{fontFamily:M,fontSize:10,color:g.confidence>=0.995?"#16A34A":"#2563EB"}}>{(g.confidence*100).toFixed(1)}%</span><Badge text={g.level} bg={lb[g.level]} color={lc[g.level]}/>
-          </div>)}
-        </div>}
-        {targets.length>0&&<><div style={{fontSize:14,fontWeight:600,marginTop:20,marginBottom:10}}>Harvest Targets</div><div style={{...card,padding:0}} className="ow">
-          <div style={{...th,gridTemplateColumns:"36px 1fr 1fr 56px 56px 64px",minWidth:380}}><span></span><span>Outcome</span><span>Score</span><span>Price</span><span>Return</span><span>Level</span></div>
-          {targets.map((t,i)=><div key={i} className="fi" style={{...tr,gridTemplateColumns:"36px 1fr 1fr 56px 56px 64px",minWidth:380}}><span>{ic[t.sport]||"🎮"}</span><span style={{fontWeight:500,fontSize:12}}>{t.outcome}</span><span style={{fontFamily:M,fontSize:10,color:"#A1A1AA"}}>{t.scoreLine}</span><span style={{fontFamily:M,fontSize:12}}>${(t.price||0).toFixed(2)}</span><span style={{fontFamily:M,fontSize:12,fontWeight:600,color:"#16A34A"}}>+{((t.return||0)*100).toFixed(1)}%</span><Badge text={t.level} bg={lb[t.level]} color={lc[t.level]}/></div>)}
-        </div></>}
-      </>}
-
-      {tab==="synth"&&<>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:16,fontWeight:700}}>Crypto Engine</span><div style={{display:"flex",alignItems:"center",gap:4}}><Dot on={clobSt==="ok"} color={clobSt==="ok"?"#16A34A":"#DC2626"}/><span style={{fontSize:10,color:clobSt==="ok"?"#16A34A":"#A1A1AA",fontFamily:M}}>{clobSt==="ok"?"CLOB LIVE":"CLOB OFF"}</span></div></div><span style={{fontSize:10,color:"#A1A1AA"}}>BTC · ETH │ 5min · 15min · Hourly</span></div>
-        {signals.length>0&&<div style={{...card,padding:0,marginBottom:12}} className="ow">
-          <div style={{...th,gridTemplateColumns:"36px 50px 55px 70px 50px 50px 50px 50px",minWidth:460}}><span></span><span>Asset</span><span>Window</span><span>Price</span><span>Src</span><span>Spread</span><span>Edge</span><span>Side</span></div>
-          {signals.map((sg,i)=><div key={i} className="fi" style={{...tr,gridTemplateColumns:"36px 50px 55px 70px 50px 50px 50px 50px",minWidth:460}}>
-            <span style={{fontSize:15}}>{ic[sg.asset]||"🪙"}</span><span style={{fontWeight:600,fontFamily:M,fontSize:12}}>{sg.asset}</span><span style={{fontSize:10,color:"#A1A1AA"}}>{sg.timeframe}</span><span style={{fontFamily:M,fontSize:11,fontWeight:600}}>${(sg.price||0).toFixed(4)}</span><PriceBadge source={sg.priceSource}/><SpreadDot spread={sg.spread}/><span style={{fontFamily:M,fontWeight:600,fontSize:11,color:sg.edge>=0.10?"#16A34A":"#2563EB"}}>+{(sg.edgePct||0).toFixed(1)}%</span><span style={{fontWeight:600,fontSize:11,color:sg.direction==="up"?"#16A34A":"#DC2626"}}>{(sg.direction||"").toUpperCase()}</span>
-          </div>)}
-        </div>}
-        {!signals.length&&<div style={empty}>{eng.synth?"Scanning for latency snipe opportunities...":"Crypto engine offline"}</div>}
-        {(()=>{const ct=trades.filter(t=>t.engine==="synth");if(!ct.length)return null;return<><div style={{fontSize:14,fontWeight:600,marginTop:16,marginBottom:10}}>Recent Crypto Trades</div><div style={{...card,padding:0}}>
-          {ct.slice(0,20).map((t,i)=>{const w=t.status==="won",l=t.status==="lost";return<div key={i} className="fi" style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",borderBottom:"1px solid #F4F4F5"}}><span>{ic[t.sport]||"₿"}</span><span style={{fontFamily:M,fontSize:11,fontWeight:500}}>{t.outcome||t.event}</span><span style={{fontSize:10,color:"#A1A1AA",fontFamily:M}}>{t.timeframe||""}</span><span style={{fontFamily:M,fontSize:11}}>@ ${(t.entryPrice||0).toFixed(4)}</span><PriceBadge source={t.priceSource}/><SpreadDot spread={t.spread}/><span style={{marginLeft:"auto"}}><StatusBadge status={t.status}/></span><span style={{fontFamily:M,fontWeight:600,fontSize:12,color:w?"#16A34A":l?"#DC2626":"#A1A1AA",minWidth:60,textAlign:"right"}}>{t.pnl!=null?`${t.pnl>0?"+":""}$${t.pnl.toFixed(2)}`:"—"}</span><span style={{fontSize:9,color:"#D4D4D8",fontFamily:M}}>{fmtShort(t.timestamp)}</span></div>})}</div></>;})()}
-        <div style={{...card,marginTop:16}}><div style={{fontSize:13,fontWeight:600,marginBottom:6}}>How It Works</div><div style={{fontSize:12,color:"#71717A",lineHeight:1.8}}><strong>Layer 1 — Latency Snipe:</strong> Binance real-time price feed. At T-30s before a 5-min or 15-min window closes, if BTC/ETH has moved decisively, buy the winning side. 98% win rate. Same strategy as the $313→$438K bot.<br/><br/><strong>Layer 2 — Synth Edge:</strong> Bittensor SN50 runs 200+ AI models. When probability diverges from Polymarket by &gt;5%, trade the gap. Requires API key ($199/mo).</div></div>
-      </>}
-
-      {tab==="positions"&&<><div style={{fontSize:16,fontWeight:700,marginBottom:12}}>Open Positions</div>
-        {!openPos.length&&<div style={empty}>No open positions</div>}
-        {openPos.length>0&&<div style={{...card,padding:0}} className="ow">
-          <div style={{...th,gridTemplateColumns:"36px 56px 1fr 1fr 56px 44px 60px 80px",minWidth:500}}><span></span><span>Engine</span><span>Outcome</span><span>Detail</span><span>Entry</span><span>Qty</span><span>Level</span><span>Time</span></div>
-          {openPos.map((p,i)=><div key={i} className="fi" style={{...tr,gridTemplateColumns:"36px 56px 1fr 1fr 56px 44px 60px 80px",minWidth:500}}><span>{ic[p.sport]||"🎯"}</span><EngineBadge engine={p.engine}/><span style={{fontWeight:500,fontSize:12}}>{p.outcome}</span><span style={{fontSize:10,color:"#A1A1AA",fontFamily:M,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.detail}</span><span style={{fontFamily:M,fontSize:12}}>${(p.entry_price||0).toFixed(2)}</span><span style={{fontFamily:M,fontSize:12}}>{p.shares}</span><Badge text={p.level} bg={lb[p.level]||"#F4F4F5"} color={lc[p.level]||"#71717A"}/><span style={{fontSize:9,color:"#D4D4D8",fontFamily:M}}>{fmtShort(p.entry_time)}</span></div>)}
-        </div>}
-      </>}
-
-      {tab==="history"&&<><div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:12}}><span style={{fontSize:16,fontWeight:700}}>Trade History</span><span style={{fontSize:10,color:"#A1A1AA"}}>{trades.length} trades · {d.wins||0}W {(d.trades||0)-(d.wins||0)}L</span></div>
-        {!trades.length&&<div style={empty}>No trades yet</div>}
-        {trades.length>0&&<div style={{...card,padding:0}} className="ow">
-          <div style={{...th,gridTemplateColumns:"36px 56px 1fr 56px 56px 64px 56px 80px",minWidth:500}}><span></span><span>Engine</span><span>Outcome</span><span>Entry</span><span>Status</span><span>P&L</span><span>Edge</span><span>Time</span></div>
-          {trades.slice(0,100).map((t,i)=>{const w=t.status==="won",l=t.status==="lost";return<div key={i} className="fi" style={{...tr,gridTemplateColumns:"36px 56px 1fr 56px 56px 64px 56px 80px",minWidth:500}}><span>{ic[t.sport]||"🎯"}</span><EngineBadge engine={t.engine||"?"}/><span style={{fontWeight:500,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.outcome||t.event}</span><span style={{fontFamily:M,fontSize:11}}>${(t.entryPrice||0).toFixed(2)}</span><StatusBadge status={t.status}/><span style={{fontFamily:M,fontSize:12,fontWeight:600,color:w?"#16A34A":l?"#DC2626":"#A1A1AA"}}>{t.pnl!=null?`${t.pnl>0?"+":""}$${t.pnl.toFixed(2)}`:"—"}</span><span style={{fontFamily:M,fontSize:10,color:"#A1A1AA"}}>{t.edgePct?`+${typeof t.edgePct==="number"?t.edgePct.toFixed(1):t.edgePct}%`:"—"}</span><span style={{fontSize:9,color:"#D4D4D8",fontFamily:M}}>{fmtShort(t.timestamp)}</span></div>})}
-        </div>}
-      </>}
-
-      {tab==="about"&&<><div style={{fontSize:20,fontWeight:700,marginBottom:16}}>Signal Harvest + Synth</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="g1">
-          <div style={card}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><Dot on={eng.harvest} color="#16A34A"/><span style={{fontSize:14,fontWeight:600}}>Engine 1: Harvest</span></div><div style={{fontSize:12,color:"#71717A",lineHeight:1.8}}>ESPN's free API provides real-time scores across 10 sports. When a team has a commanding lead late in the game, we buy their Polymarket shares at 85-97c. Game ends, shares resolve to $1.00. Win rate: 99%+ on verified blowouts.</div></div>
-          <div style={card}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><Dot on={eng.synth} color="#2563EB"/><span style={{fontSize:14,fontWeight:600}}>Engine 2: Crypto</span></div><div style={{fontSize:12,color:"#71717A",lineHeight:1.8}}>Three-layer strategy: (1) Latency snipe — Binance confirms BTC/ETH direction at T-10s. (2) Synth SN50 — 200+ AI models vs Polymarket divergence. (3) Pair arb — buy both sides when mispriced. Runs 24/7.</div></div>
-        </div>
-        <div style={{...card,marginTop:12}}><div style={{fontSize:14,fontWeight:600,marginBottom:8}}>Data Sources</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
-          {[{n:"ESPN",c:"$0/mo",d:"Live scores, 10 sports"},{n:"Binance",c:"$0/mo",d:"Real-time BTC/ETH"},{n:"Synth SN50",c:"$199/mo",d:"AI price forecasts"},{n:"Polymarket",c:"$0/mo",d:"Markets + execution"}].map(x=><div key={x.n} style={{border:"1px solid #E4E4E7",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:12,fontWeight:600}}>{x.n}</div><div style={{fontSize:10,color:"#16A34A",fontFamily:M}}>{x.c}</div><div style={{fontSize:10,color:"#A1A1AA",marginTop:2}}>{x.d}</div></div>)}
-        </div></div>
-        <div style={{textAlign:"center",marginTop:16,fontSize:10,color:"#D4D4D8"}}>Signal · Harvest + Synth · Paper Trading · Not Financial Advice</div>
-      </>}
-    </main>
-  </div>;
-}
-
-const kl={fontSize:9,color:"#A1A1AA",letterSpacing:".06em",textTransform:"uppercase",fontWeight:500,marginBottom:2};
-const card={background:"#fff",border:"1px solid #E4E4E7",borderRadius:10,padding:"14px 16px"};
-const empty={padding:40,textAlign:"center",color:"#D4D4D8",fontSize:13,background:"#fff",border:"1px solid #E4E4E7",borderRadius:10};
-const th={display:"grid",padding:"7px 16px",borderBottom:"1px solid #E4E4E7",fontSize:9,color:"#A1A1AA",textTransform:"uppercase",letterSpacing:".04em",alignItems:"center",fontWeight:500};
-const tr={display:"grid",padding:"8px 16px",borderBottom:"1px solid #F4F4F5",alignItems:"center",fontSize:13};
+const card={background:"var(--s1)",border:"1px solid var(--s3)",borderRadius:"var(--rad)",padding:"14px 16px"};
