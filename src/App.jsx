@@ -76,23 +76,31 @@ export default function App(){
         </div>
 
         <div style={S.tableWrap}>
-          {/* ═══ HARVEST: Live games + blowout diagnostics ═══ */}
+          {/* ═══ HARVEST: Live games with Polymarket odds ═══ */}
           {tab==="harvest"&&<table style={S.tbl}><thead><tr>
-            <TH w={28}/><TH>Game</TH><TH align="center">Score</TH><TH align="center">Lead</TH><TH align="right">Status</TH><TH align="right">Detail</TH>
+            <TH w={28}/><TH>Game</TH><TH align="center">Score</TH><TH align="center">Lead</TH><TH align="center">Poly Home</TH><TH align="center">Poly Away</TH><TH align="center">True Prob</TH><TH align="right">Status</TH>
           </tr></thead><tbody>
-            {games.length===0&&<tr><TD colSpan={6}><span style={{color:"#1a1a1a"}}>No live games right now</span></TD></tr>}
+            {games.length===0&&<tr><TD colSpan={8}><span style={{color:"#1a1a1a"}}>No live games right now</span></TD></tr>}
             {games.map((g,i)=>{
               const lead=Math.abs((g.home_score||0)-(g.away_score||0));
               const leader=(g.home_score||0)>=(g.away_score||0)?g.home_abbrev:g.away_abbrev;
-              const blowout=blowouts.find(b=>b.leader===leader||b.leader===(g.home_abbrev||""))||null;
-              const isBlowout=blowout&&blowout.status!=="skip";
-              return<tr key={i} style={{background:isBlowout?"#10b98108":"transparent",animation:`fadeIn 0.2s ease ${i*0.03}s both`}}>
+              const blowout=blowouts.find(b=>b.leader===leader)||null;
+              const isSignal=blowout&&blowout.status==="signal";
+              const hasOdds=g.home_poly!=null||g.away_poly!=null;
+              return<tr key={i} style={{background:isSignal?"#10b98112":"transparent",animation:`fadeIn 0.2s ease ${i*0.03}s both`}}>
                 <TD>{si(g.sport)}</TD>
                 <TD><span style={{color:"#fff",fontWeight:600}}>{g.away_abbrev||g.away} @ {g.home_abbrev||g.home}</span></TD>
-                <TD align="center"><span style={{color:"#fff",fontWeight:700,fontSize:13}}>{g.away_score??""} - {g.home_score??""}</span></TD>
+                <TD align="center"><span style={{color:"#fff",fontWeight:700,fontSize:13}}>{g.away_score??""}-{g.home_score??""}</span></TD>
                 <TD align="center">{lead>0?<span style={{color:lead>=10?"#10b981":lead>=5?"#f59e0b":"#555",fontWeight:600}}>+{lead}</span>:<span style={{color:"#222"}}>—</span>}</TD>
-                <TD align="right"><span style={{color:"#10b981",fontSize:10}}>{g.detail}</span></TD>
-                <TD align="right">{blowout?<span style={{color:blowout.status==="signal"?"#10b981":"#f59e0b",fontSize:9}}>{blowout.reason?.slice(0,30)}</span>:<span style={{color:"#1a1a1a",fontSize:9}}>—</span>}</TD>
+                <TD align="center">{g.home_poly!=null?<span style={{color:"#fff",fontWeight:600}}>{f$(g.home_poly,2)}¢</span>:<span style={{color:"#1a1a1a"}}>—</span>}</TD>
+                <TD align="center">{g.away_poly!=null?<span style={{color:"#fff",fontWeight:600}}>{f$(g.away_poly,2)}¢</span>:<span style={{color:"#1a1a1a"}}>—</span>}</TD>
+                <TD align="center">{g.home_true_prob!=null?<span style={{color:"#a78bfa",fontWeight:600}}>{pct(Math.max(g.home_true_prob,g.away_true_prob||0))}</span>:<span style={{color:"#1a1a1a"}}>—</span>}</TD>
+                <TD align="right">
+                  {isSignal?<span style={{color:"#10b981",fontSize:10,fontWeight:700}}>● TRADING</span>:
+                   blowout?<span style={{color:"#f59e0b",fontSize:9}}>{blowout.reason?.slice(0,24)}</span>:
+                   hasOdds?<span style={{color:"#555",fontSize:9}}>monitoring</span>:
+                   <span style={{color:"#222",fontSize:9}}>no market</span>}
+                </TD>
               </tr>;})}
           </tbody></table>}
 
