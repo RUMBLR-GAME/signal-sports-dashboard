@@ -966,6 +966,83 @@ function DiagRow({ label, value, tone = 'ink-1' }) {
   )
 }
 
+// ─── Lineup signals ──────────────────────────────────────────────────
+function LineupSignalsCard({ s }) {
+  const signals = s.lineup_signals || []
+  const budget = s.lineup_api_budget || { used: 0, limit: 0, remaining: 0 }
+  const enabled = s.lineup_watcher_enabled
+  const sorted = [...signals].sort((a, b) => Math.abs(b.net_home_edge_shift || 0) - Math.abs(a.net_home_edge_shift || 0))
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div className="col gap-4">
+          <span className="card-title">Lineup watcher</span>
+          <span className="caption">
+            {enabled ? (
+              <>Team news signals · <span className="num" style={{ color: 'var(--ink-2)' }}>{budget.used}/{budget.limit} API calls today</span></>
+            ) : (
+              'Disabled — set API_FOOTBALL_KEY and LINEUP_WATCHER_ENABLED=true'
+            )}
+          </span>
+        </div>
+      </div>
+
+      {!enabled ? (
+        <EmptyState text="Lineup watcher inactive. Unlocks pre-game edge on J2, A-League, Championship." />
+      ) : sorted.length === 0 ? (
+        <EmptyState text="No active lineup signals. Watching for team news within 90 min of kickoff." />
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>League</th>
+                <th>Matchup</th>
+                <th style={{ textAlign: 'right' }}>Home Δ</th>
+                <th style={{ textAlign: 'right' }}>Away Δ</th>
+                <th style={{ textAlign: 'right' }}>Net</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((sig, i) => {
+                const net = sig.net_home_edge_shift || 0
+                const netColor = net > 0.02 ? 'var(--pos)' : net < -0.02 ? 'var(--neg)' : 'var(--ink-2)'
+                return (
+                  <tr key={sig.fixture_id || i}>
+                    <td><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(sig.league)}</span></td>
+                    <td>
+                      <div className="col" style={{ gap: 2 }}>
+                        <span style={{ color: 'var(--ink-1)', fontSize: 12, fontWeight: 500 }}>{sig.home}</span>
+                        <span style={{ color: 'var(--ink-2)', fontSize: 11 }}>vs {sig.away}</span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right', color: (sig.home_impact || 0) < 0 ? 'var(--neg)' : (sig.home_impact || 0) > 0 ? 'var(--pos)' : 'var(--ink-3)' }} className="num">
+                      {(sig.home_impact || 0) >= 0 ? '+' : ''}{fmtPct(sig.home_impact || 0, 1)}
+                    </td>
+                    <td style={{ textAlign: 'right', color: (sig.away_impact || 0) < 0 ? 'var(--neg)' : (sig.away_impact || 0) > 0 ? 'var(--pos)' : 'var(--ink-3)' }} className="num">
+                      {(sig.away_impact || 0) >= 0 ? '+' : ''}{fmtPct(sig.away_impact || 0, 1)}
+                    </td>
+                    <td style={{ textAlign: 'right', color: netColor, fontWeight: 500 }} className="num">
+                      {net >= 0 ? '+' : ''}{fmtPct(net, 1)}
+                    </td>
+                    <td>
+                      <span className="caption" style={{ color: 'var(--ink-2)' }} title={sig.detail}>
+                        {sig.detail && sig.detail.length > 50 ? sig.detail.slice(0, 50) + '…' : (sig.detail || '—')}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Empty state ──────────────────────────────────────────────────────
 function EmptyState({ text }) {
   return (
@@ -1134,6 +1211,7 @@ export default function App() {
         )}
         {tab === 'analytics' && (
           <div className="col gap-20" style={{ marginBottom: 24 }}>
+            <LineupSignalsCard s={s} />
             <SportBreakdown sportsStats={s.sports_stats} />
             <div className="grid-2">
               <ActivityCard s={s} />
