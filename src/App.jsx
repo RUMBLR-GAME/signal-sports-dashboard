@@ -412,6 +412,14 @@ function PositionsList({ positions, onClose }) {
   if (!positions.length) return <div className="empty small">No open positions</div>
   return (
     <div className="pos-list">
+      <div className="pos-head">
+        <div>Position</div>
+        <div>Book</div>
+        <div>Entry → Now</div>
+        <div className="r">Cost</div>
+        <div className="r">P&L</div>
+        <div></div>
+      </div>
       {positions.map(p => {
         const cur = p.current_price || p.entry_price || 0
         const pnl = (p.market_value || cur * p.size) - (p.cost || 0)
@@ -425,8 +433,18 @@ function PositionsList({ positions, onClose }) {
                 <span className="pos-sport">{SPORT_LABEL[p.sport] || p.sport}</span>
               </div>
             </div>
+            <div className="pos-book mono">
+              {p.engine === 'edge' && p.book_prob != null ? (
+                <>
+                  <span className="pos-book-label">{p.provider || 'book'}</span>
+                  <span>{(p.book_prob * 100).toFixed(0)}¢</span>
+                </>
+              ) : (
+                <span className="dim">—</span>
+              )}
+            </div>
             <div className="pos-prices mono">
-              <span>{fmtCents(p.entry_price)}</span>
+              <span className="dim">{fmtCents(p.entry_price)}</span>
               <span className="sep">→</span>
               <span>{fmtCents(cur)}</span>
             </div>

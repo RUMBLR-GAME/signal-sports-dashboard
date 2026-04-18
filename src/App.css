@@ -649,12 +649,26 @@
   border-radius: var(--r-lg);
   overflow: hidden;
 }
+.pos-head {
+  display: grid;
+  grid-template-columns: 1.5fr 110px 130px 70px 90px 28px;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.pos-head .r { text-align: right; }
 .pos-row {
   display: grid;
-  grid-template-columns: 1.6fr 140px 70px 90px 28px;
-  gap: 12px;
+  grid-template-columns: 1.5fr 110px 130px 70px 90px 28px;
+  gap: 14px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--border-soft);
   transition: background 120ms;
 }
@@ -669,6 +683,21 @@
   font-size: 11px;
 }
 .pos-sport { color: var(--text-3); }
+.pos-book {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.pos-book-label {
+  font-size: 9px;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
 .pos-prices {
   font-size: 12px;
   color: var(--text-2);
@@ -986,13 +1015,18 @@
   .live-clock { display: none; }
   .live-tag { display: none; }
 
-  .pos-row {
+  .pos-row,
+  .pos-head {
     grid-template-columns: 1fr 80px 28px;
     gap: 8px;
     padding: 12px;
   }
   .pos-prices { display: none; }
   .pos-cost { display: none; }
+  .pos-book { display: none; }
+  .pos-head > :nth-child(2),
+  .pos-head > :nth-child(3),
+  .pos-head > :nth-child(4) { display: none; }
 
   .sport-row {
     grid-template-columns: 80px 1fr 80px;
