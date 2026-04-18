@@ -337,7 +337,8 @@ function LivePanel({ games }) {
 function LiveRow({ g }) {
   const leadHome = (g.home_score || 0) - (g.away_score || 0)
   const h = g.home_poly, a = g.away_poly
-  const blowout = Math.abs(leadHome) >= 3
+  // Match the bot's actual blowout thresholds per sport × elapsed
+  const blowout = isBlowout(g)
   return (
     <div className={`live-row ${blowout ? 'blowout' : ''}`}>
       <div className="live-league">{SPORT_LABEL[g.sport] || g.sport}</div>
@@ -355,6 +356,55 @@ function LiveRow({ g }) {
       <div className="live-tag">{blowout ? <span className="tag tag-orange">blowout</span> : <span className="tag-mute">·</span>}</div>
     </div>
   )
+}
+
+// Approximate the bot's blowout logic so badge is accurate
+function isBlowout(g) {
+  const lead = Math.abs((g.home_score || 0) - (g.away_score || 0))
+  const detail = (g.detail || '').toLowerCase()
+  const sport = g.sport
+  // MLB: inning-based. We need big leads late.
+  if (sport === 'mlb') {
+    // Extract inning number
+    const m = detail.match(/(\d+)(st|nd|rd|th)/)
+    const inning = m ? parseInt(m[1]) : 0
+    const late = inning >= 7 || detail.includes('end')
+    const midLate = inning >= 6
+    if (lead >= 7) return true
+    if (lead >= 5 && midLate) return true
+    if (lead >= 4 && late) return true
+    if (lead >= 3 && (detail.includes('9th') || detail.includes('end'))) return true
+    return false
+  }
+  // NBA/WNBA: quarter-based
+  if (sport === 'nba' || sport === 'wnba' || sport === 'ncaab') {
+    const q4 = detail.includes('4th') || detail.includes('ot')
+    const q3 = detail.includes('3rd')
+    if (lead >= 30 && q3) return true
+    if (lead >= 25 && q4) return true
+    if (lead >= 20 && q4 && detail.match(/[0-5]:\d\d/)) return true  // last 6 min
+    return false
+  }
+  // NHL: period-based
+  if (sport === 'nhl') {
+    const p3 = detail.includes('3rd')
+    if (lead >= 4 && p3) return true
+    if (lead >= 5) return true
+    return false
+  }
+  // NFL / NCAAF
+  if (sport === 'nfl' || sport === 'ncaaf') {
+    const q4 = detail.includes('4th')
+    if (lead >= 21 && q4) return true
+    if (lead >= 28) return true
+    return false
+  }
+  // Soccer: minute-based, harder to blowout reliably
+  const m = detail.match(/(\d+)'/)
+  const minute = m ? parseInt(m[1]) : 0
+  if (lead >= 3 && minute >= 75) return true
+  if (lead >= 4 && minute >= 60) return true
+  return false
 }
 
 // ───── Positions list ─────
