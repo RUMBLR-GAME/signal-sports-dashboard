@@ -640,6 +640,166 @@
 .tag.tag-orange { background: var(--accent-soft); color: var(--accent-2); }
 .tag-mute { color: var(--text-4); }
 
+/* ═══ Scan activity ═══ */
+.scan-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.scan-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 4px;
+}
+.scan-filter {
+  background: transparent;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 120ms;
+}
+.scan-filter:hover { color: var(--text); border-color: var(--border-2); }
+.scan-filter.active {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border-color: transparent;
+}
+.scan-filter-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.scan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.scan-row-wrap {
+  background: var(--bg-2);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+}
+.scan-row {
+  display: grid;
+  grid-template-columns: 90px 70px 1fr 24px;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.scan-row:hover { background: var(--bg-3); }
+.scan-row.expanded { background: var(--bg-3); border-bottom: 1px solid var(--border-soft); }
+.scan-time {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.scan-stats {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.scan-stat {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+}
+.scan-stat .dim {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-4);
+}
+.scan-chevron {
+  color: var(--text-3);
+  font-size: 10px;
+  text-align: center;
+}
+
+.scan-findings {
+  padding: 10px 14px 14px;
+  background: var(--bg-1);
+}
+
+.findings-table {
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.findings-head {
+  display: grid;
+  grid-template-columns: 1.6fr 70px 60px 60px 60px 70px 90px 140px;
+  gap: 10px;
+  padding: 6px 8px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border-soft);
+}
+.findings-head .r { text-align: right; }
+.findings-row {
+  display: grid;
+  grid-template-columns: 1.6fr 70px 60px 60px 60px 70px 90px 140px;
+  gap: 10px;
+  padding: 6px 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--border-soft);
+}
+.findings-row:last-child { border-bottom: none; }
+.findings-row .r { text-align: right; }
+.f-team { color: var(--text); font-size: 12px; }
+.f-sport { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.f-prov { font-size: 10px; }
+.f-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.f-reason {
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Harvest table has different columns */
+.harvest-findings .findings-head,
+.harvest-findings .findings-row {
+  grid-template-columns: 1.4fr 60px 50px 60px 60px 80px 1fr;
+}
+
+@media (max-width: 740px) {
+  .scan-row { grid-template-columns: 70px 60px 1fr 20px; padding: 10px; }
+  .scan-stats { gap: 10px; }
+  .findings-head,
+  .findings-row { grid-template-columns: 1fr 60px 80px; }
+  .findings-head > :nth-child(n+4),
+  .findings-row > :nth-child(n+4) { display: none; }
+  .harvest-findings .findings-head,
+  .harvest-findings .findings-row { grid-template-columns: 1fr 50px 80px; }
+  .harvest-findings .findings-head > :nth-child(n+4),
+  .harvest-findings .findings-row > :nth-child(n+4) { display: none; }
+}
+
 /* ═══ Positions list ═══ */
 .pos-list {
   display: flex;

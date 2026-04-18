@@ -205,6 +205,11 @@ export default function App() {
             <EngineCard engine="edge" stats={stats.edge} state={state} lastScan={state.last_edge_scan} />
           </section>
 
+          <section className="section">
+            <h2 className="section-title">Scan activity <span className="count">{(state.scan_history_summary || []).length}</span></h2>
+            <ScanActivity />
+          </section>
+
           <section ref={sectionRefs.analytics} className="section">
             <h2 className="section-title">By sport</h2>
             <SportBreakdown bySport={stats.bySport} />
@@ -893,6 +898,196 @@ function ConfirmModal({ modal, onDone }) {
           {result && <button className="btn-primary" onClick={onDone}>Done</button>}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ───── Scan activity ─────
+function ScanActivity() {
+  const [scans, setScans] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')  // all | edge | harvest
+  const [expandedId, setExpandedId] = useState(null)
+
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      try {
+        const qs = filter === 'all' ? '' : `?engine=${filter}`
+        const res = await fetch(`${API}/api/scans${qs}`)
+        const data = await res.json()
+        if (mounted) {
+          setScans(data.scans || [])
+          setLoading(false)
+        }
+      } catch (e) {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    const iv = setInterval(load, 10000)  // refresh every 10s
+    return () => { mounted = false; clearInterval(iv) }
+  }, [filter])
+
+  if (loading) return <div className="empty small">Loading scans…</div>
+  if (!scans.length) return <div className="empty small">No scans recorded yet</div>
+
+  return (
+    <div className="scan-activity">
+      <div className="scan-filters">
+        {['all', 'edge', 'harvest'].map(f => (
+          <button
+            key={f}
+            className={`scan-filter ${filter === f ? 'active' : ''}`}
+            onClick={() => setFilter(f)}
+          >{f}</button>
+        ))}
+        <span className="scan-filter-count dim">{scans.length} scans</span>
+      </div>
+
+      <div className="scan-list">
+        {scans.slice(0, 50).map(scan => {
+          const expanded = expandedId === scan.id
+          const findings = scan.findings || []
+          const sigCount = scan.signals || 0
+          return (
+            <div key={`${scan.engine}-${scan.id}-${scan.ts}`} className="scan-row-wrap">
+              <div
+                className={`scan-row ${expanded ? 'expanded' : ''}`}
+                onClick={() => setExpandedId(expanded ? null : scan.id)}
+              >
+                <div className="scan-time mono">{fmtScanTime(scan.ts)}</div>
+                <div className={`tag tag-${scan.engine}`}>{scan.engine}</div>
+                <div className="scan-stats">
+                  <span className="scan-stat">
+                    <span className="dim">findings</span>
+                    <span className="mono">{scan.total_findings}</span>
+                  </span>
+                  <span className="scan-stat">
+                    <span className="dim">signals</span>
+                    <span className={`mono ${sigCount > 0 ? 'p-up' : 'dim'}`}>{sigCount}</span>
+                  </span>
+                  {scan.odds_sources && (
+                    <>
+                      <span className="scan-stat">
+                        <span className="dim">espn</span>
+                        <span className="mono">{scan.odds_sources.espn_odds || 0}</span>
+                      </span>
+                      <span className="scan-stat">
+                        <span className="dim">oddsapi</span>
+                        <span className="mono">{scan.odds_sources.oddsapi_odds || 0}</span>
+                      </span>
+                    </>
+                  )}
+                  <span className="scan-stat">
+                    <span className="dim">ms</span>
+                    <span className="mono">{scan.duration_ms}</span>
+                  </span>
+                </div>
+                <div className="scan-chevron">{expanded ? '▾' : '▸'}</div>
+              </div>
+              {expanded && findings.length > 0 && (
+                <div className="scan-findings">
+                  {scan.engine === 'edge' ? <EdgeFindingsTable findings={findings} />
+                                          : <HarvestFindingsTable findings={findings} />}
+                </div>
+              )}
+              {expanded && findings.length === 0 && (
+                <div className="scan-findings empty small">No findings this scan.</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function fmtScanTime(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts * 1000)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
+function statusTone(s) {
+  if (s === 'TRADED' || s === 'signal') return 'p-up'
+  if (s === 'skip' || s?.startsWith('SKIP')) return 'dim'
+  return ''
+}
+
+function EdgeFindingsTable({ findings }) {
+  // Sort by effective_edge desc so best at top
+  const sorted = [...findings].sort((a, b) =>
+    (b.effective_edge || b.edge || 0) - (a.effective_edge || a.edge || 0)
+  )
+  return (
+    <div className="findings-table">
+      <div className="findings-head">
+        <div>Team</div>
+        <div>Sport</div>
+        <div className="r">Poly</div>
+        <div className="r">Book</div>
+        <div className="r">True</div>
+        <div className="r">Edge</div>
+        <div>Provider</div>
+        <div>Status</div>
+      </div>
+      {sorted.map((f, i) => {
+        const ml = f.moneyline
+        const bookProb = ml
+          ? ml > 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100)
+          : null
+        const edgeVal = f.effective_edge ?? f.edge ?? 0
+        return (
+          <div key={i} className="findings-row">
+            <div className="f-team">{f.team}</div>
+            <div className="f-sport dim">{f.sport}</div>
+            <div className="r mono">{f.poly != null ? `${(f.poly * 100).toFixed(0)}¢` : '—'}</div>
+            <div className="r mono">{bookProb != null ? `${(bookProb * 100).toFixed(0)}¢` : '—'}</div>
+            <div className="r mono">{f.true != null ? `${(f.true * 100).toFixed(0)}¢` : '—'}</div>
+            <div className={`r mono ${edgeVal >= 0.05 ? 'p-up' : edgeVal < 0 ? 'p-down' : 'dim'}`}>
+              {edgeVal >= 0 ? '+' : ''}{(edgeVal * 100).toFixed(1)}%
+            </div>
+            <div className="f-prov dim">{f.provider || '—'}</div>
+            <div className={`f-status ${statusTone(f.status)}`} title={f.reason || ''}>
+              {f.status || '—'}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function HarvestFindingsTable({ findings }) {
+  return (
+    <div className="findings-table harvest-findings">
+      <div className="findings-head">
+        <div>Leader</div>
+        <div>Sport</div>
+        <div className="r">Lead</div>
+        <div className="r">Conf</div>
+        <div className="r">Price</div>
+        <div>Status</div>
+        <div>Reason</div>
+      </div>
+      {findings.map((f, i) => {
+        const price = typeof f.price === 'number' ? f.price : null
+        return (
+          <div key={i} className="findings-row h-row">
+            <div className="f-team">{f.leader || '—'}</div>
+            <div className="f-sport dim">{f.sport || '—'}</div>
+            <div className="r mono">+{f.lead ?? '—'}</div>
+            <div className="r mono">{f.confidence != null ? `${(f.confidence * 100).toFixed(1)}%` : '—'}</div>
+            <div className="r mono">{price != null ? `${(price * 100).toFixed(0)}¢` : '—'}</div>
+            <div className={`f-status ${statusTone(f.status)}`}>{f.status || '—'}</div>
+            <div className="f-reason dim" title={f.reason}>{f.reason || ''}</div>
+          </div>
+        )
+      })}
     </div>
   )
 }
