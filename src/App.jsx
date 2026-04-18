@@ -347,10 +347,11 @@ function LiveRow({ g }) {
       </div>
       <div className="live-clock mono">{g.detail || '—'}</div>
       <div className="live-prices mono">
-        {h != null ? `${(h*100).toFixed(0)}` : '—'}
-        <span className="sep">/</span>
-        {a != null ? `${(a*100).toFixed(0)}` : '—'}
+        {h != null ? `${(h*100).toFixed(0)}¢` : '—'}
+        <span className="sep">·</span>
+        {a != null ? `${(a*100).toFixed(0)}¢` : '—'}
       </div>
+      <div className="live-spacer" />
       <div className="live-tag">{blowout ? <span className="tag tag-orange">blowout</span> : <span className="tag-mute">·</span>}</div>
     </div>
   )
@@ -611,7 +612,6 @@ function SportBreakdown({ bySport }) {
 
 // ───── Calibration chart ─────
 function CalibrationChart({ trades }) {
-  // Group trades by confidence bucket, show win rate in each
   const buckets = useMemo(() => {
     const b = []
     for (let i = 0; i < 10; i++) b.push({ low: i/10, high: (i+1)/10, wins: 0, total: 0, avgConf: 0 })
@@ -625,35 +625,84 @@ function CalibrationChart({ trades }) {
     }
     return b.map(x => ({ ...x, avgConf: x.total ? x.avgConf/x.total : (x.low+x.high)/2, wr: x.total ? x.wins/x.total : null }))
   }, [trades])
-  const hasData = buckets.some(b => b.total > 0)
-  if (!hasData) return <div className="card"><div className="empty small">No confidence data yet</div></div>
-  const W = 600, H = 240, P = 32
+  const withData = buckets.filter(b => b.total > 0)
+  if (!withData.length) return <div className="card"><div className="empty small">No confidence data yet</div></div>
+  // Compute overall calibration score
+  const totalTrades = withData.reduce((s, b) => s + b.total, 0)
+  const weightedDrift = withData.reduce((s, b) => s + b.total * Math.abs(b.wr - b.avgConf), 0) / totalTrades
+  const calibScore = Math.max(0, 1 - weightedDrift * 2) // 0 = worst, 1 = perfect
+  // SVG: use 1:1 aspect square chart region so circles render properly
+  const SIZE = 400, P = 32
+  const inner = SIZE - P * 2
   return (
-    <div className="card">
-      <div className="card-head small-head">
-        <div className="dim small">Model confidence vs actual win rate. Perfect calibration = diagonal.</div>
+    <div className="card calib-card">
+      <div className="calib-layout">
+        <div className="calib-chart">
+          <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="chart-square">
+            <defs>
+              <radialGradient id="dot-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#FF7B3F" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#FF5A1F" stopOpacity="0.3" />
+              </radialGradient>
+            </defs>
+            {/* grid — 5 major lines */}
+            {[0, 0.25, 0.5, 0.75, 1].map(v => (
+              <g key={v}>
+                <line x1={P + v*inner} y1={P} x2={P + v*inner} y2={SIZE-P} stroke="#1A1A1A" strokeWidth="1" />
+                <line x1={P} y1={SIZE-P - v*inner} x2={SIZE-P} y2={SIZE-P - v*inner} stroke="#1A1A1A" strokeWidth="1" />
+              </g>
+            ))}
+            {/* axis labels */}
+            {[0, 0.5, 1].map(v => (
+              <g key={`l${v}`}>
+                <text x={P + v*inner} y={SIZE-P+18} textAnchor="middle" fontSize="10" fill="#525252" fontFamily="JetBrains Mono">{(v*100).toFixed(0)}%</text>
+                <text x={P-8} y={SIZE-P - v*inner + 4} textAnchor="end" fontSize="10" fill="#525252" fontFamily="JetBrains Mono">{(v*100).toFixed(0)}%</text>
+              </g>
+            ))}
+            {/* axis titles */}
+            <text x={SIZE/2} y={SIZE-4} textAnchor="middle" fontSize="10" fill="#737373" letterSpacing="0.08em">MODEL CONFIDENCE</text>
+            <text x={8} y={SIZE/2} textAnchor="middle" fontSize="10" fill="#737373" transform={`rotate(-90 8 ${SIZE/2})`} letterSpacing="0.08em">ACTUAL WIN RATE</text>
+            {/* diagonal */}
+            <line x1={P} y1={SIZE-P} x2={SIZE-P} y2={P} stroke="#404040" strokeDasharray="4 5" strokeWidth="1" />
+            {/* data points */}
+            {buckets.map((b, i) => {
+              if (!b.total) return null
+              const cx = P + b.avgConf * inner
+              const cy = SIZE-P - b.wr * inner
+              // size scales with sample count — proper circles now since aspect is 1:1
+              const r = 4 + Math.min(16, Math.sqrt(b.total) * 2)
+              return (
+                <g key={i}>
+                  <circle cx={cx} cy={cy} r={r + 4} fill="#FF5A1F" fillOpacity="0.08" />
+                  <circle cx={cx} cy={cy} r={r} fill="url(#dot-grad)" stroke="#FF5A1F" strokeWidth="1.5" />
+                  <text x={cx} y={cy + 3} textAnchor="middle" fontSize="9" fill="white" fontWeight="600" fontFamily="JetBrains Mono">{b.total}</text>
+                </g>
+              )
+            })}
+          </svg>
+        </div>
+        <div className="calib-side">
+          <div className="calib-score">
+            <div className="calib-score-label">Calibration score</div>
+            <div className="calib-score-val mono">{(calibScore * 100).toFixed(0)}</div>
+            <div className="calib-score-bar">
+              <div className="calib-score-fill" style={{ width: `${calibScore * 100}%` }} />
+            </div>
+          </div>
+          <div className="calib-buckets">
+            {buckets.filter(b => b.total > 0).map((b, i) => (
+              <div key={i} className="calib-bucket-row">
+                <span className="mono dim">{(b.low*100).toFixed(0)}–{(b.high*100).toFixed(0)}</span>
+                <span className="mono">{b.total}</span>
+                <span className={`mono ${b.wr >= b.avgConf ? 'p-up' : 'p-down'}`}>{(b.wr*100).toFixed(0)}%</span>
+              </div>
+            ))}
+          </div>
+          <div className="calib-note dim small">
+            Circle size = sample count. Points above diagonal = model underconfident.
+          </div>
+        </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart calib" preserveAspectRatio="none">
-        {/* grid */}
-        {[0, 0.25, 0.5, 0.75, 1].map(v => (
-          <g key={v}>
-            <line x1={P + v*(W-P*2)} y1={P} x2={P + v*(W-P*2)} y2={H-P} stroke="#1A1A1A" />
-            <line x1={P} y1={H-P - v*(H-P*2)} x2={W-P} y2={H-P - v*(H-P*2)} stroke="#1A1A1A" />
-            <text x={P + v*(W-P*2)} y={H-P+14} textAnchor="middle" fontSize="10" fill="#525252">{(v*100).toFixed(0)}%</text>
-            <text x={P-6} y={H-P - v*(H-P*2) + 3} textAnchor="end" fontSize="10" fill="#525252">{(v*100).toFixed(0)}%</text>
-          </g>
-        ))}
-        {/* diagonal (perfect calibration) */}
-        <line x1={P} y1={H-P} x2={W-P} y2={P} stroke="#404040" strokeDasharray="3 4" />
-        {/* buckets */}
-        {buckets.map((b, i) => {
-          if (!b.total) return null
-          const cx = P + b.avgConf * (W-P*2)
-          const cy = H-P - b.wr * (H-P*2)
-          const r = 3 + Math.min(14, Math.sqrt(b.total) * 2.2)
-          return <circle key={i} cx={cx} cy={cy} r={r} fill="#FF5A1F" fillOpacity="0.45" stroke="#FF5A1F" strokeWidth="1.5" />
-        })}
-      </svg>
     </div>
   )
 }
@@ -784,8 +833,16 @@ function ConfirmModal({ modal, onDone }) {
 function Splash({ err }) {
   return (
     <div className="splash">
-      <div className="splash-logo"><SignalMark size={72} /></div>
-      {err && <div className="splash-err">{err}</div>}
+      <div className="splash-inner">
+        <div className="splash-mark">
+          <SignalMark size={40} />
+          <div className="splash-ring" />
+          <div className="splash-ring splash-ring-2" />
+        </div>
+        <div className="splash-text">Signal</div>
+        <div className="splash-sub">{err ? 'Connection failed' : 'Loading…'}</div>
+        {err && <div className="splash-err">{err}</div>}
+      </div>
     </div>
   )
 }
