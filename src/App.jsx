@@ -255,13 +255,17 @@ function Sidebar({ active, onNav, stats, state, open, onClose }) {
           <button className="nav-close" onClick={onClose}><I.x /></button>
         </div>
         <nav className="nav">
-          {items.map(it => (
-            <button key={it.id} className={`nav-item ${active === it.id || (it.id === 'harvest' && (active === 'edge')) ? 'active' : ''}`} onClick={() => onNav(it.id)}>
-              <it.icon />
-              <span>{it.label}</span>
-              {it.badge != null && it.badge > 0 && <span className="nav-badge">{it.badge}</span>}
-            </button>
-          ))}
+          {items.map(it => {
+            const IconComp = it.icon
+            const isActive = active === it.id || (it.id === 'harvest' && active === 'edge')
+            return (
+              <button key={it.id} className={`nav-item ${isActive ? 'active' : ''}`} onClick={() => onNav(it.id)}>
+                <IconComp />
+                <span>{it.label}</span>
+                {it.badge != null && it.badge > 0 && <span className="nav-badge">{it.badge}</span>}
+              </button>
+            )
+          })}
         </nav>
         <div className="nav-spacer" />
         <StatusMini state={state} />
@@ -521,11 +525,11 @@ function EngineCard({ engine, stats, state, lastScan }) {
   const title = engine === 'harvest' ? 'Harvest' : 'Edge'
   const sub = engine === 'harvest' ? 'Live blowouts' : 'Pre-game edges'
   // Small sparkline from engine's trades
-  const trades = useMemo(() => [...stats.trades].sort((a,b) => (a.closed_at||0)-(b.closed_at||0)), [stats.trades])
+  const sortedTrades = useMemo(() => [...stats.trades].sort((a,b) => (a.closed_at||0)-(b.closed_at||0)), [stats.trades])
   const sparkData = useMemo(() => {
     let running = 0
-    return trades.map(t => { running += (t.pnl||0); return running })
-  }, [trades])
+    return sortedTrades.map(t => { running += (t.pnl||0); return running })
+  }, [sortedTrades])
   return (
     <div className="card">
       <div className="card-head">
@@ -615,11 +619,11 @@ function CalibrationChart({ trades }) {
       const c = t.confidence ?? t.true_prob
       if (c == null) continue
       const idx = Math.min(9, Math.floor(c * 10))
-      buckets[idx].total += 1
-      buckets[idx].avgConf += c
-      if ((t.pnl || 0) > 0) buckets[idx].wins += 1
+      b[idx].total += 1
+      b[idx].avgConf += c
+      if ((t.pnl || 0) > 0) b[idx].wins += 1
     }
-    return buckets.map(x => ({ ...x, avgConf: x.total ? x.avgConf/x.total : (x.low+x.high)/2, wr: x.total ? x.wins/x.total : null }))
+    return b.map(x => ({ ...x, avgConf: x.total ? x.avgConf/x.total : (x.low+x.high)/2, wr: x.total ? x.wins/x.total : null }))
   }, [trades])
   const hasData = buckets.some(b => b.total > 0)
   if (!hasData) return <div className="card"><div className="empty small">No confidence data yet</div></div>
@@ -780,8 +784,7 @@ function ConfirmModal({ modal, onDone }) {
 function Splash({ err }) {
   return (
     <div className="splash">
-      <div className="splash-mark"><SignalMark size={36} /></div>
-      <div className="splash-text">Signal</div>
+      <div className="splash-logo"><SignalMark size={72} /></div>
       {err && <div className="splash-err">{err}</div>}
     </div>
   )
