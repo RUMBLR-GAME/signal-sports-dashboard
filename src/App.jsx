@@ -1,1236 +1,871 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import './App.css'
 
-// ─── Config ─────────────────────────────────────────────────────────────
+// ───────── Config ─────────
 const API = import.meta.env.VITE_API_URL || 'https://web-production-72709.up.railway.app'
 const POLL_MS = 3000
 
-// ─── Formatters ─────────────────────────────────────────────────────────
+// ───────── Formatters ─────────
 const fmtUSD = (n, d = 2) => {
   if (n == null || isNaN(n)) return '—'
-  const neg = n < 0
-  const v = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
-  return (neg ? '-$' : '$') + v
+  return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 }
 const fmtSignedUSD = (n) => {
   if (n == null || isNaN(n)) return '—'
-  const sign = n >= 0 ? '+' : '−'
-  const v = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${sign}$${v}`
+  const s = n >= 0 ? '+' : '−'
+  return `${s}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 const fmtPct = (n, d = 1) => (n == null ? '—' : `${(n * 100).toFixed(d)}%`)
+const fmtSignedPct = (n, d = 2) => {
+  if (n == null || isNaN(n)) return '—'
+  const s = n >= 0 ? '+' : ''
+  return `${s}${(n * 100).toFixed(d)}%`
+}
 const fmtCents = (n) => (n == null ? '—' : `${(n * 100).toFixed(1)}¢`)
 const fmtNum = (n, d = 0) => (n == null ? '—' : Number(n).toFixed(d))
 const fmtAgo = (ts) => {
   if (!ts) return '—'
   const s = Math.floor(Date.now() / 1000 - ts)
-  if (s < 0) return 'now'
   if (s < 5) return 'now'
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d`
-  return 'stale'
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
 }
 const fmtUptime = (s) => {
   if (!s) return '—'
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
   if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h`
-  return `${h}h ${m}m`
+  if (h) return `${h}h ${m}m`
+  return `${m}m`
 }
 
-// ─── Sport taxonomy ─────────────────────────────────────────────────────
-const US_SPORTS = new Set(['nba', 'wnba', 'nhl', 'mlb', 'nfl', 'ncaab', 'ncaaf', 'mls'])
-const SOCCER = new Set([
-  'epl', 'liga', 'seriea', 'bundes', 'ligue1', 'ucl', 'uel', 'mls', 'ligamx',
-  'erediv', 'liga2', 'lig2fr', 'bund2', 'serieb', 'porto', 'scotpr', 'uecl',
-  'champ', 'jleag', 'j2', 'aleag', 'braA', 'braB', 'kleag', 'china',
-  'turk', 'norw', 'denm', 'colom', 'egypt', 'libert', 'sudam', 'saudi',
-])
+// ───────── Sport labels ─────────
 const SPORT_LABEL = {
   nba: 'NBA', wnba: 'WNBA', nhl: 'NHL', mlb: 'MLB', nfl: 'NFL',
   ncaab: 'NCAA MB', ncaaf: 'NCAA FB', mls: 'MLS',
   epl: 'Premier League', liga: 'La Liga', seriea: 'Serie A',
   bundes: 'Bundesliga', ligue1: 'Ligue 1', ucl: 'UCL', uel: 'UEL', uecl: 'UECL',
-  champ: 'Championship', jleag: 'J-League', j2: 'J2 League',
+  champ: 'Championship', jleag: 'J-League', j2: 'J2',
   aleag: 'A-League', braA: 'Brazil A', braB: 'Brazil B',
   kleag: 'K-League', china: 'CSL', turk: 'Süper Lig',
   norw: 'Eliteserien', denm: 'Superliga', colom: 'Colombia',
-  egypt: 'Egypt PL', libert: 'Libertadores', sudam: 'Sudamericana',
+  egypt: 'Egypt', libert: 'Libertadores', sudam: 'Sudamericana',
   saudi: 'Saudi PL', ligamx: 'Liga MX', erediv: 'Eredivisie',
-  porto: 'Primeira', liga2: 'La Liga 2', lig2fr: 'Ligue 2',
-  bund2: '2. Bundesliga', serieb: 'Serie B', scotpr: 'Scottish',
-}
-const sportTag = (s) => SPORT_LABEL[s] || (s ? s.toUpperCase() : '—')
-const sportIsSoccer = (s) => SOCCER.has(s)
-
-const ENGINE_COLOR = { harvest: 'var(--accent)', edge: 'var(--violet)' }
-const ENGINE_LABEL = { harvest: 'Harvest', edge: 'Edge' }
-
-// ─── Logo (your Signal mark, just reproduced clean) ─────────────────────
-function Logo({ size = 20 }) {
-  return (
-    <svg viewBox="0 0 352.66 352.66" width={size} height={size} aria-hidden>
-      <path
-        fill="currentColor"
-        d="M176.33,0C78.95,0,0,78.95,0,176.33v176.33h177.32c96.93-.55,175.34-79.28,175.34-176.33S273.72,0,176.33,0ZM97.86,194.71c-8.53-2.28-13.6-11.05-11.32-19.58l20.64-77.24c2.29-8.53,11.05-13.6,19.58-11.32,8.54,2.28,13.6,11.04,11.32,19.58l-20.65,77.24c-2.28,8.53-11.04,13.6-19.57,11.32h0ZM135.51,216.42c-6.25-6.24-6.26-16.37-.02-22.61l56.5-56.57c6.24-6.25,16.36-6.26,22.61,0,6.25,6.24,6.26,16.36,0,22.61l-56.5,56.57c-6.24,6.25-16.37,6.26-22.61,0h.01ZM254.07,244.59l-77.22,20.74c-8.53,2.29-17.3-2.77-19.6-11.29-2.29-8.53,2.77-17.3,11.3-19.59l77.22-20.74c8.53-2.29,17.3,2.77,19.6,11.29,2.29,8.53-2.77,17.3-11.3,19.59h0Z"
-      />
-    </svg>
-  )
+  liga2: 'La Liga 2', lig2fr: 'Ligue 2', bund2: 'Bundesliga 2',
+  serieb: 'Serie B', porto: 'Primeira Liga', scotpr: 'Scottish Prem', argA: 'Argentina Primera',
 }
 
-// ─── Animated number (count up on mount and change) ─────────────────────
-function AnimNum({ value, fmt = fmtUSD, duration = 700, className = '' }) {
-  const [v, setV] = useState(value || 0)
-  const prev = useRef(value || 0)
+// ───────── Icons (inline SVG) ─────────
+const I = {
+  logo: () => (
+    <svg width="20" height="20" viewBox="0 0 32 32"><path d="M5 22 L12 14 L17 18 L27 8" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+  ),
+  dash: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
+  positions: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17 L9 11 L13 15 L21 7"/><path d="M14 7 H21 V14"/></svg>,
+  ledger: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10 H21"/><path d="M9 4 V20"/></svg>,
+  live: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>,
+  analytics: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20 V10"/><path d="M10 20 V4"/><path d="M16 20 V13"/><path d="M22 20 V7"/></svg>,
+  harvest: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 L12 22"/><path d="M6 8 Q12 4 18 8"/><path d="M4 14 Q12 8 20 14"/></svg>,
+  edge: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3 L21 21"/><path d="M21 9 V3 H15"/></svg>,
+  lineup: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20 Q3 14 9 14 Q15 14 15 20"/><path d="M15 14 Q21 14 21 20"/></svg>,
+  search: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.5 16.5"/></svg>,
+  bell: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8 A6 6 0 0 1 18 8 V13 L20 16 H4 L6 13 Z"/><path d="M10 20 Q12 22 14 20"/></svg>,
+  help: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9 Q12 6.5 14.5 9 Q15 10.5 12 12 V14"/><circle cx="12" cy="17.5" r="0.8" fill="currentColor"/></svg>,
+  refresh: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12 A8 8 0 0 1 18 7"/><path d="M18 3 V7 H14"/><path d="M20 12 A8 8 0 0 1 6 17"/><path d="M6 21 V17 H10"/></svg>,
+  chev: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9 L12 15 L18 9"/></svg>,
+  arrow: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12 H19"/><path d="M13 6 L19 12 L13 18"/></svg>,
+  close: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg>,
+  pause: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>,
+}
+
+// ───────── Data hook ─────────
+function useBotState() {
+  const [state, setState] = useState(null)
+  const [err, setErr] = useState(null)
+  const [tick, setTick] = useState(0)
   useEffect(() => {
-    const from = prev.current
-    const to = value || 0
-    if (from === to) return
-    const start = performance.now()
-    let raf
-    const tick = (now) => {
-      const t = Math.min(1, (now - start) / duration)
-      const eased = 1 - Math.pow(1 - t, 3)
-      setV(from + (to - from) * eased)
-      if (t < 1) raf = requestAnimationFrame(tick)
-      else prev.current = to
+    let alive = true
+    const fetch1 = async () => {
+      try {
+        const r = await fetch(`${API}/api/state`, { cache: 'no-store' })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const j = await r.json()
+        if (alive) { setState(j); setErr(null) }
+      } catch (e) { if (alive) setErr(e.message) }
     }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [value, duration])
-  return <span className={className}>{fmt(v)}</span>
+    fetch1()
+    const id = setInterval(() => { fetch1(); setTick(t => t + 1) }, POLL_MS)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  return { state, err, tick }
 }
 
-// ─── Sparkline (SVG, smooth path, animated on mount) ────────────────────
-function Sparkline({ data, color = 'var(--accent)', h = 80, fillOpacity = 0.12, showPeakShade = false, peak = null }) {
-  if (!data || data.length < 2) return <div style={{ height: h }} />
-  const vals = data.map((d) => (Array.isArray(d) ? d[1] : d.equity ?? d.value))
-  const times = data.map((d) => (Array.isArray(d) ? d[0] : d.time ?? d.t))
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
-  const range = max - min || 1
-  const W = 1000
-  const pad = 4
-  const innerH = h - pad * 2
-
-  const pts = vals.map((v, i) => ({
-    x: (i / (vals.length - 1)) * W,
-    y: pad + (1 - (v - min) / range) * innerH,
-  }))
-
-  // Smooth path (Catmull-Rom-ish)
-  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[i - 1], p1 = pts[i]
-    const cx = (p0.x + p1.x) / 2
-    d += ` Q ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} ${cx.toFixed(2)} ${((p0.y + p1.y) / 2).toFixed(2)}`
-    d += ` T ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`
-  }
-
-  const gradId = `gg-${color.replace(/[^a-z]/gi, '')}-${h}`
-  const lastVal = vals[vals.length - 1]
-  const firstVal = vals[0]
-  const up = lastVal >= firstVal
-
-  // Drawdown (peak) shade region — shaded portion from peak to current if below peak
-  const peakLine = showPeakShade && peak
-    ? pad + (1 - (peak - min) / range) * innerH
-    : null
-
-  return (
-    <svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: h, display: 'block', overflow: 'visible' }}>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* Area under the curve */}
-      <path
-        d={`${d} L ${W} ${h} L 0 ${h} Z`}
-        fill={`url(#${gradId})`}
-      />
-      {/* Peak dashed line */}
-      {peakLine != null && (
-        <line x1="0" x2={W} y1={peakLine} y2={peakLine} stroke="var(--ink-4)" strokeWidth="1" strokeDasharray="4 4" />
-      )}
-      {/* Line */}
-      <path
-        d={d}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ strokeDasharray: 2000, animation: 'drawLine 1.6s cubic-bezier(0.22, 1, 0.36, 1) both' }}
-      />
-      {/* Last-point dot */}
-      <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="3" fill={color} />
-      <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="6" fill={color} opacity="0.25" style={{ animation: 'pulse 2s ease-in-out infinite' }} />
-    </svg>
-  )
+// ───────── Derived stats ─────────
+function useStats(state) {
+  return useMemo(() => {
+    if (!state) return null
+    const equity = state.equity || 0
+    const starting = state.starting_bankroll || 1000
+    const pct = (equity - starting) / starting
+    const realized = state.total_pnl || 0
+    const unrealized = state.unrealized_pnl || 0
+    const open = state.open_positions || []
+    const trades = state.trade_history || []
+    const live = state.live_games || []
+    const wins = trades.filter(t => (t.pnl || 0) > 0).length
+    const winRate = trades.length ? wins / trades.length : 0
+    // today P&L (since midnight local)
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
+    const todayTs = midnight.getTime() / 1000
+    const todayTrades = trades.filter(t => (t.closed_at || 0) >= todayTs)
+    const todayPnl = todayTrades.reduce((s, t) => s + (t.pnl || 0), 0)
+    const deployed = open.reduce((s, p) => s + (p.cost || 0), 0)
+    const exposure = deployed / starting
+    return { equity, starting, pct, realized, unrealized, open, trades, live, winRate, todayTrades, todayPnl, deployed, exposure }
+  }, [state])
 }
 
-// ─── Status dot with tooltip ───────────────────────────────────────────
-function StatusDot({ state = 'live', label }) {
-  const cls = state === 'live' ? 'live' : state === 'warn' ? 'warn' : state === 'err' ? 'err' : ''
-  return (
-    <span className="pill" title={label}>
-      <span className={`pill-dot ${cls}`} />
-      <span style={{ color: 'var(--ink-1)', fontSize: 11 }}>{label}</span>
-    </span>
-  )
+// ───────── Equity curve builder ─────────
+function useEquityCurve(state, stats) {
+  return useMemo(() => {
+    if (!state || !stats) return []
+    // Prefer state.equity_curve if present; fallback to synthesizing from trade_history
+    if (state.equity_curve?.length) {
+      return state.equity_curve.map(p => ({ ts: p.ts, equity: p.equity || p.value || p[1] }))
+    }
+    // Synthesize
+    const trades = [...stats.trades].sort((a, b) => (a.closed_at || 0) - (b.closed_at || 0))
+    const pts = [{ ts: trades[0]?.opened_at || Date.now()/1000 - 86400, equity: stats.starting }]
+    let running = stats.starting
+    for (const t of trades) {
+      running += (t.pnl || 0)
+      pts.push({ ts: t.closed_at || Date.now()/1000, equity: running })
+    }
+    pts.push({ ts: Date.now() / 1000, equity: stats.equity })
+    return pts
+  }, [state, stats])
 }
 
-// ─── Hero — the "revenue" moment ───────────────────────────────────────
-function Hero({ s, onPause, onResume }) {
-  const pnl = s.total_pnl || 0
-  const equity = s.equity || 0
-  const starting = s.starting_bankroll || 1000
-  const totalRet = starting > 0 ? pnl / starting : 0
-  const dd = s.drawdown_pct || 0
-  const peak = s.peak_equity || equity
-  const pnlPos = pnl >= 0
-  const paused = !!s.paused
-  const circuitTripped = !!(s.circuit && s.circuit.tripped)
+// ───────── Main App ─────────
+export default function App() {
+  const { state, err } = useBotState()
+  const stats = useStats(state)
+  const [nav, setNav] = useState('dashboard')
+  const [confirmClose, setConfirmClose] = useState(null)
+
+  if (err && !state) return <FatalError err={err} />
+  if (!state || !stats) return <LoadingSplash />
 
   return (
-    <section style={{ padding: '28px 0 40px' }}>
-      <div className="row between" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 24 }}>
-        <div className="col gap-16" style={{ flex: 1, minWidth: 260 }}>
-          <div className="label">Total equity</div>
-          <div className="row gap-16" style={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <AnimNum value={equity} fmt={(n) => fmtUSD(n, 2)} className="hero-num" />
-            <div className={`delta ${pnlPos ? 'pos' : 'neg'}`}>
-              {pnlPos ? '+' : '−'}{fmtPct(Math.abs(totalRet), 2)}
-            </div>
-          </div>
-          <div className="row gap-16 wrap caption" style={{ color: 'var(--ink-2)' }}>
-            <span>Starting <span className="num" style={{ color: 'var(--ink-1)' }}>{fmtUSD(starting, 0)}</span></span>
-            <span style={{ color: 'var(--ink-4)' }}>·</span>
-            <span>Peak <span className="num" style={{ color: 'var(--ink-1)' }}>{fmtUSD(peak, 2)}</span></span>
-            <span style={{ color: 'var(--ink-4)' }}>·</span>
-            <span>Drawdown <span className="num" style={{ color: dd > 0.05 ? 'var(--neg)' : 'var(--ink-1)' }}>{fmtPct(dd, 1)}</span></span>
-            {s.unrealized_pnl != null && (
-              <>
-                <span style={{ color: 'var(--ink-4)' }}>·</span>
-                <span>
-                  Unrealized <span className="num" style={{ color: s.unrealized_pnl >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
-                    {fmtSignedUSD(s.unrealized_pnl)}
-                  </span>
-                </span>
-              </>
-            )}
-          </div>
-
-          <div className="row gap-10" style={{ marginTop: 8 }}>
-            {paused || circuitTripped ? (
-              <button className="btn btn-primary" onClick={onResume}>Resume trading</button>
-            ) : (
-              <button className="btn btn-danger" onClick={() => onPause(60)}>Pause 60 min</button>
-            )}
-            <button className="btn" onClick={() => onPause(15)} disabled={paused}>Pause 15m</button>
-            {circuitTripped && <span className="pill"><span className="pill-dot err" /> Circuit: {s.circuit.consec_losses || 0} losses</span>}
-          </div>
+    <div className="app">
+      <Sidebar active={nav} onNav={setNav} state={state} stats={stats} />
+      <main className="main">
+        <TopBar state={state} stats={stats} nav={nav} />
+        <div className="content">
+          {nav === 'dashboard' && <Dashboard state={state} stats={stats} onCloseAll={() => setConfirmClose('all')} />}
+          {nav === 'positions' && <PositionsPage state={state} stats={stats} onClose={setConfirmClose} />}
+          {nav === 'ledger' && <LedgerPage stats={stats} />}
+          {nav === 'live' && <LivePage state={state} />}
+          {nav === 'analytics' && <AnalyticsPage state={state} stats={stats} />}
+          {nav === 'harvest' && <EnginePage engine="harvest" state={state} stats={stats} />}
+          {nav === 'edge' && <EnginePage engine="edge" state={state} stats={stats} />}
+          {nav === 'lineup' && <LineupPage state={state} />}
         </div>
+      </main>
+      {confirmClose && <ConfirmClose target={confirmClose} onDone={() => setConfirmClose(null)} />}
+    </div>
+  )
+}
 
-        <div className="col gap-12" style={{ flex: 1, minWidth: 320, maxWidth: 560 }}>
-          <div className="row between">
-            <div className="col gap-4">
-              <div className="label">Equity curve</div>
-              <div className="caption">Since {fmtAgo(s.equity_curve?.[0]?.[0])} ago</div>
-            </div>
-            <div className="row gap-12 caption">
-              <div className="row gap-4"><span style={{ width: 8, height: 2, background: pnlPos ? 'var(--accent)' : 'var(--neg)' }} /> Equity</div>
-              <div className="row gap-4"><span style={{ width: 8, height: 1, borderTop: '1px dashed var(--ink-4)' }} /> Peak</div>
-            </div>
-          </div>
-          <Sparkline
-            data={s.equity_curve || []}
-            color={pnlPos ? 'var(--accent)' : 'var(--neg)'}
-            h={120}
-            fillOpacity={0.14}
-            showPeakShade
-            peak={peak}
-          />
+// ───────── Sidebar ─────────
+function Sidebar({ active, onNav, state, stats }) {
+  const items = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'dash' },
+    { id: 'positions', label: 'Positions', icon: 'positions', badge: stats.open.length || null },
+    { id: 'ledger', label: 'Ledger', icon: 'ledger', badge: stats.trades.length || null },
+    { id: 'live', label: 'Live Games', icon: 'live', badge: stats.live.length || null },
+    { id: 'analytics', label: 'Analytics', icon: 'analytics' },
+  ]
+  const engines = [
+    { id: 'harvest', label: 'Harvest', icon: 'harvest' },
+    { id: 'edge', label: 'Edge', icon: 'edge' },
+    { id: 'lineup', label: 'Lineup Watch', icon: 'lineup', on: state.lineup_watcher_enabled },
+  ]
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark"><I.logo /></div>
+        <div className="brand-name">Signal</div>
+      </div>
+      <div className="search-box">
+        <I.search />
+        <input placeholder="Search…" />
+        <span className="kbd">⌘K</span>
+      </div>
+      <nav className="nav">
+        {items.map(it => {
+          const IconC = I[it.icon]
+          return (
+            <button key={it.id} className={`nav-item ${active === it.id ? 'active' : ''}`} onClick={() => onNav(it.id)}>
+              <IconC />
+              <span>{it.label}</span>
+              {it.badge != null && <span className="nav-badge">{it.badge}</span>}
+            </button>
+          )
+        })}
+      </nav>
+      <div className="nav-header">ENGINES</div>
+      <nav className="nav">
+        {engines.map(it => {
+          const IconC = I[it.icon]
+          return (
+            <button key={it.id} className={`nav-item ${active === it.id ? 'active' : ''}`} onClick={() => onNav(it.id)}>
+              <IconC />
+              <span>{it.label}</span>
+              {it.on === false && <span className="nav-off">off</span>}
+            </button>
+          )
+        })}
+      </nav>
+      <div className="spacer" />
+      <StatusCard state={state} />
+    </aside>
+  )
+}
+
+function StatusCard({ state }) {
+  const ok = state.ws_market_connected && state.ws_sports_connected
+  return (
+    <div className="status-card">
+      <div className="status-row">
+        <span className={`dot ${ok ? 'ok' : 'bad'}`} />
+        <span className="status-label">{state.paper_mode ? 'PAPER MODE' : 'LIVE'}</span>
+      </div>
+      <div className="status-meta">
+        <div>Uptime <b>{fmtUptime(state.uptime)}</b></div>
+        <div>Redis <b className={state.redis_connected ? 'ok' : 'bad'}>{state.redis_connected ? '●' : '○'}</b></div>
+      </div>
+    </div>
+  )
+}
+
+// Need to import React for React.createElement usage above (hack since we use jsx transform)
+// Actually easier: use a renderIcon helper
+// Let me patch — we import icon components directly
+function renderIcon(name) { const C = I[name]; return C ? <C /> : null }
+
+// ───────── Top bar ─────────
+function TopBar({ state, stats, nav }) {
+  const label = { dashboard: 'Dashboard', positions: 'Positions', ledger: 'Ledger', live: 'Live Games', analytics: 'Analytics', harvest: 'Harvest Engine', edge: 'Edge Engine', lineup: 'Lineup Watcher' }[nav] || 'Dashboard'
+  return (
+    <div className="topbar">
+      <div className="crumbs">
+        <span className="crumb-icon">←</span>
+        <span className="crumb-icon">→</span>
+        <span className="crumb-sep">Signal</span>
+        <I.chev />
+        <span className="crumb-active">{label}</span>
+      </div>
+      <div className="topbar-right">
+        <button className="ic-btn" title="Help"><I.help /></button>
+        <button className="ic-btn" title="Notifications"><I.bell /></button>
+        <button className="ic-btn" title="Refresh"><I.refresh /></button>
+        <div className="user-chip">
+          <div className="avatar">G</div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 
-// ─── Engine cards (per-engine P&L attribution) ─────────────────────────
-function EngineCard({ id, stats, positions, live, lastScan }) {
-  const deployed = stats?.open_cost || 0
-  const pnl = stats?.total_pnl || 0
-  const wins = stats?.wins || 0
-  const losses = stats?.losses || 0
-  const trades = (wins + losses) || stats?.total_trades || 0
-  const wr = wins + losses > 0 ? wins / (wins + losses) : 0
-  const unrealized = stats?.unrealized || 0
-  const active = positions?.filter((p) => p.engine === id).length || 0
-  const color = ENGINE_COLOR[id]
+// ───────── Dashboard view ─────────
+function Dashboard({ state, stats, onCloseAll }) {
+  return (
+    <div className="dashboard">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Overview</h1>
+          <p className="page-sub">Live performance across all engines</p>
+        </div>
+        <div className="page-actions">
+          <Pill label={state.paused ? 'PAUSED' : 'RUNNING'} tone={state.paused ? 'warn' : 'ok'} />
+          <button className="btn-ghost"><I.chev /> This session</button>
+        </div>
+      </div>
 
+      <div className="row row-heroes">
+        <HeroEquity stats={stats} />
+        <HeroRealized stats={stats} />
+        <HeroExposure stats={stats} onCloseAll={onCloseAll} />
+      </div>
+
+      <div className="row row-half">
+        <PositionsCard stats={stats} />
+        <EquityChartCard state={state} stats={stats} />
+      </div>
+
+      <div className="row row-half">
+        <LiveGamesCard state={state} />
+        <SignalsCard state={state} stats={stats} />
+      </div>
+
+      <LedgerCard stats={stats} />
+    </div>
+  )
+}
+
+// ───────── Hero cards ─────────
+function HeroEquity({ stats }) {
+  return (
+    <div className="hero hero-active">
+      <div className="hero-head">
+        <div className="hero-icon-tile active"><I.logo /></div>
+        <span className="hero-menu">⋯</span>
+      </div>
+      <div className="hero-title">Total Equity</div>
+      <div className="hero-sub">Paper bankroll · marked-to-market</div>
+      <div className="hero-row">
+        <div className="hero-value mono">{fmtUSD(stats.equity)}</div>
+        <div className={`pill ${stats.pct >= 0 ? 'pill-green' : 'pill-red'}`}>
+          {fmtSignedPct(stats.pct, 2)} {stats.pct >= 0 ? '↑' : '↓'}
+        </div>
+      </div>
+      <div className="hero-foot">
+        <span>Start {fmtUSD(stats.starting, 0)}</span>
+        <span className="hero-arrow">See breakdown <I.arrow /></span>
+      </div>
+    </div>
+  )
+}
+
+function HeroRealized({ stats }) {
+  const avg = stats.trades.length ? stats.realized / stats.trades.length : 0
+  return (
+    <div className="hero">
+      <div className="hero-head">
+        <div className="hero-icon-tile"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17 L9 11 L13 15 L21 7"/></svg></div>
+        <span className="hero-menu">⋯</span>
+      </div>
+      <div className="hero-title">Realized P&L</div>
+      <div className="hero-sub">{stats.trades.length} closed · {fmtPct(stats.winRate, 0)} win rate</div>
+      <div className="hero-row">
+        <div className="hero-value mono">{fmtSignedUSD(stats.realized)}</div>
+      </div>
+      <div className="hero-foot">
+        <span>Avg {fmtSignedUSD(avg)}/trade</span>
+        <span className="hero-arrow">View ledger <I.arrow /></span>
+      </div>
+    </div>
+  )
+}
+
+function HeroExposure({ stats, onCloseAll }) {
+  const pctUsed = Math.min(1, stats.exposure)
+  return (
+    <div className="hero">
+      <div className="hero-head">
+        <div className="hero-icon-tile"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3 A9 9 0 0 1 21 12"/></svg></div>
+        <span className="hero-menu">⋯</span>
+      </div>
+      <div className="hero-title">Open Exposure</div>
+      <div className="hero-sub">{stats.open.length} positions · {fmtSignedUSD(stats.unrealized)} unrealized</div>
+      <div className="hero-row">
+        <div className="hero-value mono">{fmtUSD(stats.deployed, 0)}</div>
+        <div className="pill pill-muted">{fmtPct(pctUsed, 0)}</div>
+      </div>
+      <div className="exposure-bar">
+        <div className="exposure-fill" style={{ width: `${pctUsed * 100}%` }} />
+      </div>
+      <div className="hero-foot">
+        <span>Cap 60%</span>
+        <button className="hero-arrow hero-link" onClick={onCloseAll} disabled={!stats.open.length}>
+          Close all <I.arrow />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ───────── Positions card ─────────
+function PositionsCard({ stats }) {
+  const rows = stats.open.slice(0, 6)
   return (
     <div className="card">
       <div className="card-head">
-        <div className="row gap-10">
-          <span style={{ width: 8, height: 8, background: color, borderRadius: '50%' }} />
-          <span className="card-title" style={{ color: 'var(--ink)' }}>{ENGINE_LABEL[id]}</span>
+        <div>
+          <div className="card-title">Open Positions</div>
+          <div className="card-sub">{stats.open.length} live · {fmtSignedUSD(stats.unrealized)} unrealized</div>
         </div>
-        <span className="caption">
-          scan {fmtAgo(lastScan)} ago
-        </span>
       </div>
-
-      <div className="col gap-12">
-        <div className="row between">
-          <div className="col gap-4">
-            <div className="tiny">Realized</div>
-            <div className="display-num" style={{ color: pnl >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
-              {fmtSignedUSD(pnl)}
-            </div>
-          </div>
-          <div className="col gap-4" style={{ alignItems: 'flex-end' }}>
-            <div className="tiny">Unrealized</div>
-            <div className="stat-num" style={{ color: unrealized >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
-              {fmtSignedUSD(unrealized)}
-            </div>
-          </div>
-        </div>
-
-        <div className="row between" style={{ paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
-          <div className="col gap-4">
-            <div className="tiny">Trades</div>
-            <div className="row gap-8">
-              <span className="stat-num" style={{ fontSize: 18 }}>{trades}</span>
-              <span className="caption num" style={{ color: wr >= 0.5 ? 'var(--pos)' : 'var(--ink-2)' }}>
-                {fmtPct(wr, 0)} win
-              </span>
-            </div>
-          </div>
-          <div className="col gap-4" style={{ alignItems: 'flex-end' }}>
-            <div className="tiny">Deployed</div>
-            <div className="row gap-6">
-              <span className="stat-num" style={{ fontSize: 18 }}>{fmtUSD(deployed, 0)}</span>
-              {active > 0 && (
-                <span className="pill" style={{ background: 'transparent', borderColor: color + '40', color }}>
-                  {active} open
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+      {rows.length === 0 && <Empty label="No open positions" />}
+      <div className="pos-grid">
+        {rows.map(p => <PositionTile key={p.id} p={p} />)}
       </div>
     </div>
   )
 }
 
-// ─── Capital allocation stack bar ──────────────────────────────────────
-function CapitalCard({ s }) {
-  const equity = s.equity || 1
-  const harvestCost = s.harvest_stats?.open_cost || 0
-  const edgeCost = s.edge_stats?.open_cost || 0
-  const cash = Math.max(0, equity - harvestCost - edgeCost)
-  const total = harvestCost + edgeCost + cash
-  const p = (x) => (total > 0 ? (x / total) * 100 : 0)
+function PositionTile({ p }) {
+  const cur = p.current_price || p.entry_price || 0
+  const pnl = (p.market_value || cur * p.size) - (p.cost || 0)
+  const pnlPct = p.cost ? pnl / p.cost : 0
+  const up = pnl >= 0
+  const sport = SPORT_LABEL[p.sport] || p.sport?.toUpperCase() || '—'
+  return (
+    <div className="pos-tile">
+      <div className="pos-tile-head">
+        <span className={`engine-dot engine-${p.engine}`} />
+        <span className="pos-engine">{p.engine}</span>
+        <span className="pos-sep">·</span>
+        <span className="pos-sport">{sport}</span>
+      </div>
+      <div className="pos-team">{p.team}</div>
+      <div className="pos-meta">
+        <span className="mono">{fmtCents(p.entry_price)}</span>
+        <span className="pos-arrow">→</span>
+        <span className="mono">{fmtCents(cur)}</span>
+      </div>
+      <div className="pos-foot">
+        <span className="mono dim">{fmtUSD(p.cost, 0)}</span>
+        <span className={`pill pill-sm ${up ? 'pill-green' : 'pill-red'}`}>{fmtSignedUSD(pnl)}</span>
+      </div>
+    </div>
+  )
+}
 
+// ───────── Equity chart card ─────────
+function EquityChartCard({ state, stats }) {
+  const [range, setRange] = useState('session')
+  const curve = useEquityCurve(state, stats)
+  const filtered = useMemo(() => {
+    if (!curve.length) return []
+    const now = Date.now() / 1000
+    const cutoff = { '1h': now - 3600, '24h': now - 86400, '7d': now - 7 * 86400, session: 0 }[range] || 0
+    return curve.filter(p => p.ts >= cutoff)
+  }, [curve, range])
   return (
     <div className="card">
       <div className="card-head">
-        <span className="card-title">Capital</span>
-        <span className="caption num">{fmtUSD(equity, 2)}</span>
-      </div>
-
-      <div style={{ height: 8, borderRadius: 4, overflow: 'hidden', display: 'flex', background: 'var(--bg-2)' }}>
-        <div style={{ width: `${p(harvestCost)}%`, background: 'var(--accent)', transition: 'width 420ms ease' }} />
-        <div style={{ width: `${p(edgeCost)}%`, background: 'var(--violet)', transition: 'width 420ms ease' }} />
-      </div>
-
-      <div className="col gap-8" style={{ marginTop: 16 }}>
-        <AllocRow color="var(--accent)" label="Harvest" value={harvestCost} total={equity} />
-        <AllocRow color="var(--violet)" label="Edge" value={edgeCost} total={equity} />
-        <AllocRow color="var(--ink-3)" label="Cash" value={cash} total={equity} />
-      </div>
-    </div>
-  )
-}
-function AllocRow({ color, label, value, total }) {
-  const pct = total > 0 ? value / total : 0
-  return (
-    <div className="row between">
-      <div className="row gap-8">
-        <span style={{ width: 6, height: 6, background: color, borderRadius: '50%' }} />
-        <span className="caption">{label}</span>
-      </div>
-      <div className="row gap-12">
-        <span className="caption num" style={{ color: 'var(--ink-2)' }}>{fmtPct(pct, 0)}</span>
-        <span className="caption num" style={{ color: 'var(--ink-1)', minWidth: 72, textAlign: 'right' }}>{fmtUSD(value, 2)}</span>
-      </div>
-    </div>
-  )
-}
-
-// ─── Activity heatmap (scans over last 24h grouped by hour) ────────────
-function ActivityCard({ s }) {
-  const now = Date.now() / 1000
-  // Use scan_log timestamps to build 7x24 matrix (day of week × hour)
-  const grid = useMemo(() => {
-    const g = Array.from({ length: 7 }, () => Array(24).fill(0))
-    const logs = s.scan_log || []
-    for (const l of logs) {
-      if (!l.t) continue
-      if (now - l.t > 7 * 86400) continue
-      const d = new Date(l.t * 1000)
-      g[d.getDay()][d.getHours()]++
-    }
-    return g
-  }, [s.scan_log, now])
-
-  const maxCount = Math.max(1, ...grid.flat())
-  const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-
-  return (
-    <div className="card" style={{ gridColumn: 'span 2' }}>
-      <div className="card-head">
-        <span className="card-title">Scan activity · 7 days</span>
-        <span className="caption">{s.scan_count || 0} scans · {fmtAgo(s.last_harvest_scan)} ago</span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '20px repeat(24, 1fr)', gap: 3, alignItems: 'center' }}>
-        <div />
-        {Array.from({ length: 24 }).map((_, h) => (
-          <div key={h} className="tiny" style={{ textAlign: 'center', opacity: h % 3 === 0 ? 1 : 0 }}>
-            {h}
-          </div>
-        ))}
-        {grid.map((row, dIdx) => (
-          <div key={`r-${dIdx}`} style={{ display: 'contents' }}>
-            <div className="tiny" style={{ textAlign: 'right', paddingRight: 6 }}>{days[dIdx]}</div>
-            {row.map((c, h) => {
-              const v = c / maxCount
-              const bg = v === 0
-                ? 'var(--bg-2)'
-                : `rgba(139, 124, 255, ${0.12 + v * 0.7})`
-              return (
-                <div
-                  key={`${dIdx}-${h}`}
-                  className="heat-cell"
-                  style={{ background: bg }}
-                  title={`${days[dIdx]} ${h}:00 — ${c} scans`}
-                />
-              )
-            })}
-          </div>
-        ))}
-      </div>
-      <div className="row between" style={{ marginTop: 14, color: 'var(--ink-3)' }}>
-        <span className="tiny">Less</span>
-        <div className="row gap-4">
-          {[0.1, 0.3, 0.5, 0.75, 1].map((v, i) => (
-            <span key={i} className="heat-cell" style={{ width: 10, height: 10, background: `rgba(139, 124, 255, ${0.12 + v * 0.7})` }} />
+        <div>
+          <div className="card-title">Equity Curve</div>
+          <div className="equity-headline mono">{fmtUSD(stats.equity)}</div>
+        </div>
+        <div className="range-toggle">
+          {['1h', '24h', '7d', 'session'].map(r => (
+            <button key={r} className={`range-btn ${range === r ? 'active' : ''}`} onClick={() => setRange(r)}>
+              {r === 'session' ? 'All' : r}
+            </button>
           ))}
         </div>
-        <span className="tiny">More</span>
       </div>
+      <EquityChart points={filtered} starting={stats.starting} />
     </div>
   )
 }
 
-// ─── Live games table ──────────────────────────────────────────────────
-function LiveGames({ games, blowoutLog }) {
-  const byAb = useMemo(() => {
-    const m = {}
-    for (const b of blowoutLog || []) m[`${b.leader}_${b.lead}`] = b
-    return m
-  }, [blowoutLog])
+function EquityChart({ points, starting }) {
+  if (!points.length) return <Empty label="Waiting for data" />
+  const W = 560, H = 220, P = 28
+  const xs = points.map(p => p.ts)
+  const ys = points.map(p => p.equity)
+  const [xMin, xMax] = [Math.min(...xs), Math.max(...xs)]
+  const yMin = Math.min(...ys, starting) * 0.995
+  const yMax = Math.max(...ys, starting) * 1.005
+  const px = t => P + ((t - xMin) / Math.max(1, (xMax - xMin))) * (W - P * 2)
+  const py = e => H - P - ((e - yMin) / Math.max(1, (yMax - yMin))) * (H - P * 2)
+  const pathD = points.map((p, i) => `${i ? 'L' : 'M'}${px(p.ts).toFixed(1)},${py(p.equity).toFixed(1)}`).join(' ')
+  const fillD = `${pathD} L${px(xMax).toFixed(1)},${H - P} L${px(xMin).toFixed(1)},${H - P} Z`
+  const last = points[points.length - 1]
+  const ticks = 4
+  return (
+    <div className="chart-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FF5A1F" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#FF5A1F" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="eq-line" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#FF7B3F" />
+            <stop offset="100%" stopColor="#FF5A1F" />
+          </linearGradient>
+        </defs>
+        {[...Array(ticks)].map((_, i) => {
+          const yv = yMin + (i / (ticks - 1)) * (yMax - yMin)
+          const y = py(yv)
+          return (
+            <g key={i}>
+              <line x1={P} y1={y} x2={W - P} y2={y} stroke="#1A1A1A" />
+              <text x={P - 6} y={y + 4} textAnchor="end" fontSize="10" fill="#525252" fontFamily="JetBrains Mono">
+                {Math.round(yv)}
+              </text>
+            </g>
+          )
+        })}
+        <line x1={P} y1={py(starting)} x2={W - P} y2={py(starting)} stroke="#404040" strokeDasharray="3 3" />
+        <path d={fillD} fill="url(#eq-fill)" />
+        <path d={pathD} fill="none" stroke="url(#eq-line)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={px(last.ts)} cy={py(last.equity)} r="4" fill="#FF5A1F" />
+        <circle cx={px(last.ts)} cy={py(last.equity)} r="8" fill="#FF5A1F" opacity="0.25" />
+      </svg>
+    </div>
+  )
+}
 
-  const sorted = useMemo(() => {
-    return [...(games || [])].sort((a, b) => {
-      const la = Math.abs((a.home_score || 0) - (a.away_score || 0))
-      const lb = Math.abs((b.home_score || 0) - (b.away_score || 0))
-      return lb - la
-    })
-  }, [games])
-
+// ───────── Live games card ─────────
+function LiveGamesCard({ state }) {
+  const games = (state.live_games || []).slice(0, 6)
   return (
     <div className="card">
       <div className="card-head">
-        <div className="col gap-4">
-          <span className="card-title">Live games</span>
-          <span className="caption">{sorted.length} in play</span>
+        <div>
+          <div className="card-title">Live Games</div>
+          <div className="card-sub">{(state.live_games || []).length} in play · monitoring</div>
         </div>
+        <div className="pulse-dot" />
       </div>
-
-      {sorted.length === 0 ? (
-        <EmptyState text="No games in play right now." />
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>League</th>
-                <th>Matchup</th>
-                <th style={{ textAlign: 'right' }}>Score</th>
-                <th style={{ textAlign: 'center' }}>Lead</th>
-                <th style={{ textAlign: 'center' }}>Status</th>
-                <th style={{ textAlign: 'right' }}>Home ¢</th>
-                <th style={{ textAlign: 'right' }}>Away ¢</th>
-                <th style={{ textAlign: 'right' }}>Signal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((g, i) => {
-                const lead = Math.abs((g.home_score || 0) - (g.away_score || 0))
-                const leaderAb = (g.home_score || 0) >= (g.away_score || 0) ? g.home_abbrev : g.away_abbrev
-                const diag = byAb[`${leaderAb}_${lead}`]
-                const trading = diag?.status === 'signal'
-                const skipReason = diag?.status === 'skip' ? diag.reason : null
-                const homeLead = (g.home_score || 0) > (g.away_score || 0)
-                const awayLead = (g.away_score || 0) > (g.home_score || 0)
-                return (
-                  <tr key={g.espn_id || i} className="ticker-row">
-                    <td style={{ whiteSpace: 'nowrap' }}><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(g.sport)}</span></td>
-                    <td style={{ minWidth: 120 }}>
-                      <div className="col" style={{ gap: 2 }}>
-                        <span style={{ color: awayLead ? 'var(--ink)' : 'var(--ink-2)', fontWeight: awayLead ? 600 : 400, fontSize: 12 }}>
-                          {g.away_abbrev || g.away_team}
-                        </span>
-                        <span style={{ color: homeLead ? 'var(--ink)' : 'var(--ink-2)', fontWeight: homeLead ? 600 : 400, fontSize: 12 }}>
-                          {g.home_abbrev || g.home_team}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <div className="col" style={{ gap: 2, alignItems: 'flex-end' }}>
-                        <span className="num" style={{ color: awayLead ? 'var(--ink)' : 'var(--ink-2)', fontWeight: awayLead ? 600 : 400, fontSize: 13 }}>{g.away_score ?? 0}</span>
-                        <span className="num" style={{ color: homeLead ? 'var(--ink)' : 'var(--ink-2)', fontWeight: homeLead ? 600 : 400, fontSize: 13 }}>{g.home_score ?? 0}</span>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      {lead > 0 ? (
-                        <span className="num" style={{ color: lead >= 10 ? 'var(--accent)' : 'var(--ink-2)', fontSize: 12, fontWeight: 500 }}>+{lead}</span>
-                      ) : <span className="caption" style={{ color: 'var(--ink-4)' }}>—</span>}
-                    </td>
-                    <td style={{ textAlign: 'center', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
-                      <span className="mono" style={{ fontSize: 11 }}>{g.detail || `P${g.period} ${g.clock}`}</span>
-                    </td>
-                    <td style={{ textAlign: 'right', color: g.home_poly != null ? 'var(--ink)' : 'var(--ink-4)', whiteSpace: 'nowrap' }}>
-                      {g.home_poly != null ? fmtCents(g.home_poly) : '—'}
-                    </td>
-                    <td style={{ textAlign: 'right', color: g.away_poly != null ? 'var(--ink)' : 'var(--ink-4)', whiteSpace: 'nowrap' }}>
-                      {g.away_poly != null ? fmtCents(g.away_poly) : '—'}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {trading ? (
-                        <span className="pill" style={{ background: 'rgba(184,255,94,0.10)', color: 'var(--accent)', borderColor: 'rgba(184,255,94,0.25)' }}>
-                          <span className="pill-dot live" /> Trading
-                        </span>
-                      ) : skipReason ? (
-                        <span className="caption" style={{ color: 'var(--ink-3)' }} title={skipReason}>
-                          {skipReason.length > 22 ? skipReason.slice(0, 22) + '…' : skipReason}
-                        </span>
-                      ) : (
-                        <span className="caption" style={{ color: 'var(--ink-4)' }}>monitoring</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {games.length === 0 && <Empty label="No live games" />}
+      <div className="live-list">
+        {games.map(g => <LiveRow key={g.espn_id} g={g} />)}
+      </div>
     </div>
   )
 }
 
-// ─── Edge scanner ──────────────────────────────────────────────────────
-function EdgeScanner({ edges, threshold }) {
-  const [sortBy, setSortBy] = useState('edge')
-  const [filter, setFilter] = useState('all')
-  const [q, setQ] = useState('')
+function LiveRow({ g }) {
+  const leadHome = g.home_score - g.away_score
+  const lead = Math.abs(leadHome)
+  const leaderIsHome = leadHome > 0
+  const tie = leadHome === 0
+  const h = g.home_poly, a = g.away_poly
+  return (
+    <div className="live-row">
+      <div className="live-league">{SPORT_LABEL[g.sport] || g.sport}</div>
+      <div className="live-teams">
+        <div className={`live-team ${leaderIsHome ? 'lead' : ''}`}>{g.away_abbrev} <span className="live-score mono">{g.away_score}</span></div>
+        <div className={`live-team ${!leaderIsHome && !tie ? 'lead' : ''}`}>{g.home_abbrev} <span className="live-score mono">{g.home_score}</span></div>
+      </div>
+      <div className="live-status">{g.detail}</div>
+      <div className="live-poly">
+        {h != null && a != null ? (
+          <>
+            <span className="mono dim">{(h*100).toFixed(0)}¢</span>
+            <span className="mono dim">·</span>
+            <span className="mono dim">{(a*100).toFixed(0)}¢</span>
+          </>
+        ) : <span className="dim">—</span>}
+      </div>
+      <div className="live-signal">
+        {lead >= 3 ? <span className="pill pill-sm pill-orange">blowout</span> : <span className="live-watch">monitoring</span>}
+      </div>
+    </div>
+  )
+}
 
-  const filtered = useMemo(() => {
-    let arr = edges || []
-    if (filter === 'tradeable') arr = arr.filter((e) => (e.effective_edge ?? e.edge) >= (threshold || 0.05))
-    else if (filter === 'us') arr = arr.filter((e) => US_SPORTS.has(e.sport))
-    else if (filter === 'soccer') arr = arr.filter((e) => sportIsSoccer(e.sport))
-    if (q) arr = arr.filter((e) => (e.team || '').toLowerCase().includes(q.toLowerCase()))
-    const by = sortBy
-    arr = [...arr].sort((a, b) => {
-      if (by === 'edge') return (b.edge || 0) - (a.edge || 0)
-      if (by === 'hours') return (a.hours || 0) - (b.hours || 0)
-      if (by === 'poly') return (b.poly || 0) - (a.poly || 0)
-      return 0
-    })
-    return arr
-  }, [edges, filter, q, sortBy, threshold])
-
+// ───────── Signals card ─────────
+function SignalsCard({ state }) {
+  const edges = (state.edges_found || []).slice(0, 7)
   return (
     <div className="card">
-      <div className="card-head" style={{ flexWrap: 'wrap', gap: 12 }}>
-        <div className="col gap-4">
-          <span className="card-title">Edge scanner</span>
-          <span className="caption">
-            {filtered.length} of {edges?.length || 0} opportunities · threshold {fmtPct(threshold || 0.05, 0)}
-          </span>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Edge Signals</div>
+          <div className="card-sub">Top tradeable edges · last scan {fmtAgo(state.last_edge_scan)}</div>
         </div>
-        <div className="row gap-10 wrap">
-          <input className="input" placeholder="Filter team…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="seg">
-            <button data-active={filter === 'all'} onClick={() => setFilter('all')}>All</button>
-            <button data-active={filter === 'tradeable'} onClick={() => setFilter('tradeable')}>Tradeable</button>
-            <button data-active={filter === 'us'} onClick={() => setFilter('us')}>US</button>
-            <button data-active={filter === 'soccer'} onClick={() => setFilter('soccer')}>Soccer</button>
+      </div>
+      {edges.length === 0 && <Empty label="No edges detected" />}
+      <div className="signals-list">
+        {edges.map((e, i) => (
+          <div key={i} className="signal-row">
+            <span className="sig-sport">{SPORT_LABEL[e.sport] || e.sport}</span>
+            <span className="sig-team">{e.team}</span>
+            <span className="mono dim">poly {fmtCents(e.poly)}</span>
+            <span className="mono dim">true {fmtCents(e.true)}</span>
+            <span className={`pill pill-sm ${e.edge >= 0.05 ? 'pill-green' : 'pill-muted'}`}>{fmtSignedPct(e.edge)}</span>
           </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ───────── Ledger card ─────────
+function LedgerCard({ stats }) {
+  const rows = [...stats.trades].sort((a, b) => (b.closed_at || 0) - (a.closed_at || 0)).slice(0, 8)
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div>
+          <div className="card-title">Recent Activity</div>
+          <div className="card-sub">{stats.trades.length} closed trades · {fmtSignedUSD(stats.realized)} realized</div>
+        </div>
+        <div className="card-actions">
+          <div className="search-mini"><I.search /><input placeholder="Search" /></div>
         </div>
       </div>
-
-      {filtered.length === 0 ? (
-        <EmptyState
-          text={edges?.length > 0 ? 'No matches for current filter.' : 'Waiting for odds feed. Edges appear when upcoming games post lines.'}
-        />
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>League</th>
-                <th>Team</th>
-                <th style={{ textAlign: 'right' }} className="sortable" onClick={() => setSortBy('poly')}>Poly</th>
-                <th style={{ textAlign: 'center' }}>True</th>
-                <th style={{ textAlign: 'right' }} className="sortable" onClick={() => setSortBy('edge')}>Edge</th>
-                <th style={{ textAlign: 'right' }} className="sortable" onClick={() => setSortBy('hours')}>T−</th>
-                <th style={{ textAlign: 'right' }}>Book</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0, 80).map((e, i) => {
-                const tradeable = (e.effective_edge ?? e.edge) >= (threshold || 0.05)
-                const edgeColor = e.edge >= 0.10 ? 'var(--accent)' : e.edge >= 0.05 ? 'var(--violet)' : 'var(--ink-2)'
-                return (
-                  <tr key={i}>
-                    <td><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(e.sport)}</span></td>
-                    <td>
-                      <span style={{ color: tradeable ? 'var(--ink)' : 'var(--ink-1)', fontWeight: tradeable ? 500 : 400 }}>
-                        {e.team}
-                      </span>
-                      {e.stale && <span className="pill" style={{ marginLeft: 8, background: 'transparent', color: 'var(--warn)', borderColor: 'rgba(255,181,71,0.25)', padding: '1px 6px', fontSize: 9 }}>stale</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }} className="num">{fmtCents(e.poly)}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="row gap-6" style={{ justifyContent: 'center' }}>
-                        <span className="pbar">
-                          <span className="pbar-fill" style={{ width: `${(e.true || 0) * 100}%` }} />
-                        </span>
-                        <span className="num caption" style={{ color: 'var(--ink-1)' }}>{fmtCents(e.true)}</span>
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', color: edgeColor, fontWeight: 500 }} className="num">
-                      {e.edge >= 0 ? '+' : ''}{fmtPct(e.edge, 1)}
-                    </td>
-                    <td style={{ textAlign: 'right', color: 'var(--ink-2)' }} className="num">{e.hours ? `${e.hours.toFixed(1)}h` : '—'}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--ink-3)' }} className="caption">{e.provider || '—'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+      {rows.length === 0 && <Empty label="No trades yet — the bot will log resolved paper trades here" />}
+      {rows.length > 0 && (
+        <table className="ledger">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Team</th>
+              <th>Market</th>
+              <th>Engine</th>
+              <th className="r">Entry</th>
+              <th className="r">Exit</th>
+              <th>When</th>
+              <th className="r">P&L</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(t => <LedgerRow key={t.id} t={t} />)}
+          </tbody>
+        </table>
       )}
     </div>
   )
 }
 
-// ─── Blowout diagnostics (why did / didn't we trade) ───────────────────
-function BlowoutLog({ log }) {
-  const traded = (log || []).filter((b) => b.status === 'signal')
-  const skipped = (log || []).filter((b) => b.status === 'skip')
-
+function LedgerRow({ t }) {
+  const up = (t.pnl || 0) >= 0
   return (
-    <div className="card">
-      <div className="card-head">
-        <div className="col gap-4">
-          <span className="card-title">Blowout log · why / why not</span>
-          <span className="caption">
-            <span style={{ color: 'var(--accent)' }}>{traded.length} traded</span>
-            <span style={{ color: 'var(--ink-4)', margin: '0 8px' }}>·</span>
-            <span style={{ color: 'var(--ink-2)' }}>{skipped.length} skipped</span>
-          </span>
-        </div>
-      </div>
-
-      {log?.length === 0 || !log ? (
-        <EmptyState text="No blowouts detected yet." />
-      ) : (
-        <div style={{ overflowX: 'auto', maxHeight: 380, overflowY: 'auto' }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>League</th>
-                <th>Leader</th>
-                <th style={{ textAlign: 'right' }}>Lead</th>
-                <th style={{ textAlign: 'right' }}>Conf</th>
-                <th style={{ textAlign: 'right' }}>Price</th>
-                <th>Outcome</th>
-              </tr>
-            </thead>
-            <tbody>
-              {log.map((b, i) => {
-                const traded = b.status === 'signal'
-                return (
-                  <tr key={i}>
-                    <td><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(b.sport)}</span></td>
-                    <td>
-                      <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{b.leader}</span>
-                      <span className="caption" style={{ color: 'var(--ink-3)', marginLeft: 6 }}>vs {b.trailer}</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }} className="num">+{b.lead}</td>
-                    <td style={{ textAlign: 'right' }} className="num">{fmtPct(b.confidence, 1)}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--ink-1)' }} className="num">{b.price ? fmtCents(b.price) : '—'}</td>
-                    <td>
-                      {traded ? (
-                        <span className="pill" style={{ background: 'rgba(184,255,94,0.10)', color: 'var(--accent)', borderColor: 'rgba(184,255,94,0.25)' }}>
-                          Traded · {fmtUSD(b.bet, 0)}
-                        </span>
-                      ) : (
-                        <span className="caption" style={{ color: 'var(--ink-3)' }}>{b.reason}</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <tr>
+      <td><input type="checkbox" className="cb" /></td>
+      <td className="bold">{t.team}</td>
+      <td className="dim">{t.market_question || '—'}</td>
+      <td><span className={`engine-chip engine-${t.engine}`}>{t.engine}</span></td>
+      <td className="r mono">{fmtCents(t.entry_price)}</td>
+      <td className="r mono">{fmtCents(t.exit_price)}</td>
+      <td className="dim">{fmtAgo(t.closed_at)}</td>
+      <td className={`r mono ${up ? 'p-up' : 'p-down'}`}>{fmtSignedUSD(t.pnl)}</td>
+      <td>
+        <span className={`result-chip ${up ? 'res-ok' : 'res-bad'}`}>
+          <span className="dot" />
+          {t.result || (up ? 'WIN' : 'LOSS')}
+        </span>
+      </td>
+    </tr>
   )
 }
 
-// ─── Open positions ────────────────────────────────────────────────────
-function OpenPositions({ positions }) {
+// ───────── Full pages ─────────
+function PositionsPage({ stats, onClose }) {
   return (
-    <div className="card">
-      <div className="card-head">
-        <div className="col gap-4">
-          <span className="card-title">Open positions</span>
-          <span className="caption">{positions.length} live · marked-to-market</span>
+    <div className="dashboard">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Positions</h1>
+          <p className="page-sub">{stats.open.length} open · {fmtSignedUSD(stats.unrealized)} unrealized</p>
         </div>
       </div>
-      {positions.length === 0 ? (
-        <EmptyState text="No open positions." />
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="tbl">
+      <div className="card">
+        {stats.open.length === 0 && <Empty label="No open positions" />}
+        {stats.open.length > 0 && (
+          <table className="ledger">
             <thead>
-              <tr>
-                <th>Engine</th>
-                <th>League</th>
-                <th>Team</th>
-                <th style={{ textAlign: 'right' }}>Entry</th>
-                <th style={{ textAlign: 'right' }}>Mark</th>
-                <th style={{ textAlign: 'right' }}>Cost</th>
-                <th style={{ textAlign: 'right' }}>Unrealized</th>
-              </tr>
+              <tr><th>Team</th><th>Market</th><th>Engine</th><th>Sport</th><th className="r">Entry</th><th className="r">Mark</th><th className="r">Cost</th><th className="r">Unrealized</th><th>Age</th><th></th></tr>
             </thead>
             <tbody>
-              {positions.map((p) => {
-                const mark = p.current_price ?? p.entry_price
-                const unreal = p.unrealized_pnl ?? ((mark - p.entry_price) * p.size)
+              {stats.open.map(p => {
+                const cur = p.current_price || p.entry_price
+                const pnl = (p.market_value || cur * p.size) - (p.cost || 0)
+                const up = pnl >= 0
                 return (
                   <tr key={p.id}>
-                    <td>
-                      <span style={{ color: ENGINE_COLOR[p.engine], fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                        {ENGINE_LABEL[p.engine] || p.engine}
-                      </span>
-                    </td>
-                    <td><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(p.sport)}</span></td>
-                    <td><span style={{ color: 'var(--ink)', fontWeight: 500 }}>{p.team}</span></td>
-                    <td style={{ textAlign: 'right' }} className="num">{fmtCents(p.entry_price)}</td>
-                    <td style={{ textAlign: 'right', color: mark > p.entry_price ? 'var(--pos)' : mark < p.entry_price ? 'var(--neg)' : 'var(--ink-1)' }} className="num">
-                      {fmtCents(mark)}
-                    </td>
-                    <td style={{ textAlign: 'right' }} className="num">{fmtUSD(p.cost, 2)}</td>
-                    <td style={{ textAlign: 'right', color: unreal >= 0 ? 'var(--pos)' : 'var(--neg)', fontWeight: 500 }} className="num">
-                      {fmtSignedUSD(unreal)}
-                    </td>
+                    <td className="bold">{p.team}</td>
+                    <td className="dim">{p.market || p.market_question || '—'}</td>
+                    <td><span className={`engine-chip engine-${p.engine}`}>{p.engine}</span></td>
+                    <td>{SPORT_LABEL[p.sport] || p.sport}</td>
+                    <td className="r mono">{fmtCents(p.entry_price)}</td>
+                    <td className="r mono">{fmtCents(cur)}</td>
+                    <td className="r mono">{fmtUSD(p.cost, 2)}</td>
+                    <td className={`r mono ${up ? 'p-up' : 'p-down'}`}>{fmtSignedUSD(pnl)}</td>
+                    <td className="dim">{fmtAgo(p.opened_at)}</td>
+                    <td><button className="btn-close-sm" onClick={() => onClose(p.id)}>Close</button></td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Trade history ─────────────────────────────────────────────────────
-function TradeLedger({ trades }) {
-  return (
-    <div className="card">
-      <div className="card-head">
-        <div className="col gap-4">
-          <span className="card-title">Ledger</span>
-          <span className="caption">{trades.length} resolved trades</span>
-        </div>
-      </div>
-      {trades.length === 0 ? (
-        <EmptyState text="No resolved trades yet." />
-      ) : (
-        <div style={{ overflowX: 'auto', maxHeight: 500, overflowY: 'auto' }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Engine</th>
-                <th>League</th>
-                <th>Team</th>
-                <th style={{ textAlign: 'right' }}>Entry</th>
-                <th style={{ textAlign: 'right' }}>Exit</th>
-                <th style={{ textAlign: 'right' }}>P&L</th>
-                <th>Outcome</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.map((t, i) => {
-                const win = t.pnl > 0
-                return (
-                  <tr key={t.id || i}>
-                    <td>
-                      <span style={{ color: ENGINE_COLOR[t.engine], fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                        {ENGINE_LABEL[t.engine] || t.engine}
-                      </span>
-                    </td>
-                    <td><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(t.sport)}</span></td>
-                    <td><span style={{ color: 'var(--ink-1)', fontWeight: 500 }}>{t.team}</span></td>
-                    <td style={{ textAlign: 'right' }} className="num">{fmtCents(t.entry_price)}</td>
-                    <td style={{ textAlign: 'right' }} className="num">{fmtCents(t.exit_price ?? t.payout / (t.size || 1))}</td>
-                    <td style={{ textAlign: 'right', color: win ? 'var(--pos)' : 'var(--neg)', fontWeight: 500 }} className="num">
-                      {fmtSignedUSD(t.pnl)}
-                    </td>
-                    <td>
-                      <span className="pill" style={{ background: 'transparent', color: win ? 'var(--pos)' : 'var(--neg)', borderColor: win ? 'rgba(184,255,94,0.25)' : 'rgba(255,107,107,0.25)', fontSize: 10 }}>
-                        {t.result}
-                      </span>
-                    </td>
-                    <td><span className="caption" style={{ color: 'var(--ink-3)' }}>{t.exit_reason || '—'}</span></td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Per-sport P&L grid ───────────────────────────────────────────────
-function SportBreakdown({ sportsStats }) {
-  const entries = Object.entries(sportsStats || {})
-    .sort(([, a], [, b]) => Math.abs(b.pnl || 0) - Math.abs(a.pnl || 0))
-    .slice(0, 18)
-  const maxAbs = Math.max(1, ...entries.map(([, s]) => Math.abs(s.pnl || 0)))
-
-  return (
-    <div className="card">
-      <div className="card-head">
-        <div className="col gap-4">
-          <span className="card-title">P&L by league</span>
-          <span className="caption">Realized · Σ across engines</span>
-        </div>
-      </div>
-      {entries.length === 0 ? (
-        <EmptyState text="No resolved trades in any league yet." />
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-          {entries.map(([sport, st]) => {
-            const pnl = st.pnl || 0
-            const pos = pnl >= 0
-            const pct = Math.abs(pnl) / maxAbs
-            return (
-              <div key={sport} className="card-sm" style={{ padding: 14 }}>
-                <div className="tiny" style={{ color: 'var(--ink-2)' }}>{sportTag(sport)}</div>
-                <div className="stat-num" style={{ fontSize: 18, color: pos ? 'var(--pos)' : 'var(--neg)', margin: '4px 0 6px' }}>
-                  {fmtSignedUSD(pnl)}
-                </div>
-                <div className="tiny" style={{ color: 'var(--ink-3)' }}>
-                  {st.total_trades} trades · {fmtPct(st.win_rate, 0)} win
-                </div>
-                <div style={{ marginTop: 8, height: 2, background: 'var(--bg-2)', borderRadius: 1, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct * 100}%`, background: pos ? 'var(--accent)' : 'var(--neg)', transition: 'width 400ms ease' }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Activity feed (scan log, compact) ────────────────────────────────
-function ActivityFeed({ logs }) {
-  const shown = (logs || []).slice().reverse().slice(0, 80)
-  return (
-    <div className="card" style={{ minHeight: 360 }}>
-      <div className="card-head">
-        <span className="card-title">Activity</span>
-        <span className="caption">{logs?.length || 0} events</span>
-      </div>
-      <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-        {shown.length === 0 ? (
-          <EmptyState text="Waiting for first scan…" />
-        ) : (
-          shown.map((l, i) => {
-            const ec = l.engine ? ENGINE_COLOR[l.engine] : 'var(--ink-3)'
-            const hot = l.level === 'trade' || l.level === 'signal'
-            return (
-              <div key={i} className="row ticker-row" style={{ padding: '8px 0', borderBottom: '1px solid var(--line-soft)', gap: 14, alignItems: 'flex-start' }}>
-                <span className="mono" style={{ color: 'var(--ink-4)', fontSize: 10, width: 44, textAlign: 'right', flexShrink: 0 }}>
-                  {fmtAgo(l.t)}
-                </span>
-                <span style={{ color: ec, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', width: 60, flexShrink: 0 }}>
-                  {l.engine ? (ENGINE_LABEL[l.engine] || l.engine) : ''}
-                </span>
-                <span style={{ color: hot ? 'var(--ink)' : 'var(--ink-2)', fontSize: 12, lineHeight: 1.5, flex: 1, minWidth: 0 }}>{l.msg}</span>
-              </div>
-            )
-          })
         )}
       </div>
     </div>
   )
 }
 
-// ─── System / diagnostics ─────────────────────────────────────────────
-function SystemCard({ s }) {
-  const wsS = s.ws_sports_connected
-  const wsM = s.ws_market_connected
-  const verified = s.series_verified || {}
-  const verifiedCount = Object.values(verified).filter(Boolean).length
-  const verifiedTotal = Object.keys(verified).length
-  const poly = s.poly_diag || {}
-
+function LedgerPage({ stats }) {
+  const rows = [...stats.trades].sort((a, b) => (b.closed_at || 0) - (a.closed_at || 0))
   return (
-    <div className="card">
-      <div className="card-head">
-        <span className="card-title">System</span>
-        <span className="caption">{fmtUptime(s.uptime)} uptime</span>
-      </div>
-
-      <div className="col gap-10">
-        <DiagRow label="Mode" value={s.paper_mode ? 'Paper' : 'Live'} tone={s.paper_mode ? 'ink-1' : 'accent'} />
-        <DiagRow label="Sports WS" value={wsS ? 'Connected' : 'Disconnected'} tone={wsS ? 'pos' : 'neg'} />
-        <DiagRow label="Market WS" value={wsM ? 'Connected' : 'Disconnected'} tone={wsM ? 'pos' : 'neg'} />
-        <DiagRow label="Odds API" value={s.odds_api_enabled ? 'Active' : 'Not configured'} tone={s.odds_api_enabled ? 'pos' : 'ink-3'} />
-        <DiagRow
-          label="Series IDs"
-          value={verifiedTotal ? `${verifiedCount} / ${verifiedTotal}` : '—'}
-          tone={verifiedCount === verifiedTotal ? 'pos' : 'warn'}
-        />
-        <DiagRow label="Last harvest" value={`${fmtAgo(s.last_harvest_scan)} ago`} tone="ink-1" />
-        <DiagRow label="Last edge" value={`${fmtAgo(s.last_edge_scan)} ago`} tone="ink-1" />
-        {s.circuit?.tripped && (
-          <DiagRow label="Circuit" value="Tripped · cooling down" tone="neg" />
-        )}
-      </div>
-
-      {Object.keys(poly).length > 0 && (
-        <>
-          <hr className="hr" style={{ margin: '18px 0 14px' }} />
-          <div className="tiny" style={{ marginBottom: 8, color: 'var(--ink-2)' }}>POLYMARKET SERIES · markets returned</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-            {Object.entries(poly).slice(0, 20).map(([sp, d]) => (
-              <div key={sp} className="row between" style={{ fontSize: 11 }}>
-                <span style={{ color: 'var(--ink-2)' }}>{sportTag(sp)}</span>
-                <span className="mono num" style={{ color: d.filtered > 0 ? 'var(--ink-1)' : 'var(--ink-4)' }}>{d.filtered}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-function DiagRow({ label, value, tone = 'ink-1' }) {
-  const toneVar = { 'pos': 'var(--pos)', 'neg': 'var(--neg)', 'warn': 'var(--warn)', 'accent': 'var(--accent)', 'ink-1': 'var(--ink-1)', 'ink-3': 'var(--ink-3)' }[tone] || 'var(--ink-1)'
-  return (
-    <div className="row between" style={{ fontSize: 12 }}>
-      <span style={{ color: 'var(--ink-3)' }}>{label}</span>
-      <span style={{ color: toneVar, fontWeight: 500 }}>{value}</span>
-    </div>
-  )
-}
-
-// ─── Lineup signals ──────────────────────────────────────────────────
-function LineupSignalsCard({ s }) {
-  const signals = s.lineup_signals || []
-  const budget = s.lineup_api_budget || { used: 0, limit: 0, remaining: 0 }
-  const enabled = s.lineup_watcher_enabled
-  const sorted = [...signals].sort((a, b) => Math.abs(b.net_home_edge_shift || 0) - Math.abs(a.net_home_edge_shift || 0))
-
-  return (
-    <div className="card">
-      <div className="card-head">
-        <div className="col gap-4">
-          <span className="card-title">Lineup watcher</span>
-          <span className="caption">
-            {enabled ? (
-              <>Team news signals · <span className="num" style={{ color: 'var(--ink-2)' }}>{budget.used}/{budget.limit} API calls today</span></>
-            ) : (
-              'Disabled — set API_FOOTBALL_KEY and LINEUP_WATCHER_ENABLED=true'
-            )}
-          </span>
+    <div className="dashboard">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Ledger</h1>
+          <p className="page-sub">{rows.length} closed · {fmtSignedUSD(stats.realized)} realized · {fmtPct(stats.winRate, 0)} win rate</p>
         </div>
       </div>
-
-      {!enabled ? (
-        <EmptyState text="Lineup watcher inactive. Unlocks pre-game edge on J2, A-League, Championship." />
-      ) : sorted.length === 0 ? (
-        <EmptyState text="No active lineup signals. Watching for team news within 90 min of kickoff." />
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>League</th>
-                <th>Matchup</th>
-                <th style={{ textAlign: 'right' }}>Home Δ</th>
-                <th style={{ textAlign: 'right' }}>Away Δ</th>
-                <th style={{ textAlign: 'right' }}>Net</th>
-                <th>Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((sig, i) => {
-                const net = sig.net_home_edge_shift || 0
-                const netColor = net > 0.02 ? 'var(--pos)' : net < -0.02 ? 'var(--neg)' : 'var(--ink-2)'
-                return (
-                  <tr key={sig.fixture_id || i}>
-                    <td><span className="caption" style={{ color: 'var(--ink-2)' }}>{sportTag(sig.league)}</span></td>
-                    <td>
-                      <div className="col" style={{ gap: 2 }}>
-                        <span style={{ color: 'var(--ink-1)', fontSize: 12, fontWeight: 500 }}>{sig.home}</span>
-                        <span style={{ color: 'var(--ink-2)', fontSize: 11 }}>vs {sig.away}</span>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right', color: (sig.home_impact || 0) < 0 ? 'var(--neg)' : (sig.home_impact || 0) > 0 ? 'var(--pos)' : 'var(--ink-3)' }} className="num">
-                      {(sig.home_impact || 0) >= 0 ? '+' : ''}{fmtPct(sig.home_impact || 0, 1)}
-                    </td>
-                    <td style={{ textAlign: 'right', color: (sig.away_impact || 0) < 0 ? 'var(--neg)' : (sig.away_impact || 0) > 0 ? 'var(--pos)' : 'var(--ink-3)' }} className="num">
-                      {(sig.away_impact || 0) >= 0 ? '+' : ''}{fmtPct(sig.away_impact || 0, 1)}
-                    </td>
-                    <td style={{ textAlign: 'right', color: netColor, fontWeight: 500 }} className="num">
-                      {net >= 0 ? '+' : ''}{fmtPct(net, 1)}
-                    </td>
-                    <td>
-                      <span className="caption" style={{ color: 'var(--ink-2)' }} title={sig.detail}>
-                        {sig.detail && sig.detail.length > 50 ? sig.detail.slice(0, 50) + '…' : (sig.detail || '—')}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="card">
+        <LedgerCard stats={stats} />
+      </div>
     </div>
   )
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────
-function EmptyState({ text }) {
-  return (
-    <div className="center" style={{ padding: '40px 20px', color: 'var(--ink-3)', fontSize: 12, textAlign: 'center' }}>
-      {text}
-    </div>
-  )
-}
-
-// ─── Main App ─────────────────────────────────────────────────────────
-export default function App() {
-  const [s, setS] = useState(null)
-  const [online, setOnline] = useState(false)
-  const [tab, setTab] = useState('live')
-  const [err, setErr] = useState(null)
-
-  const poll = useCallback(async () => {
-    try {
-      const r = await fetch(`${API}/api/state`, { cache: 'no-store' })
-      if (!r.ok) throw new Error('HTTP ' + r.status)
-      const data = await r.json()
-      setS(data)
-      setOnline(true)
-      setErr(null)
-    } catch (e) {
-      setOnline(false)
-      setErr(e.message)
+function LivePage({ state }) {
+  const games = state.live_games || []
+  const bySport = useMemo(() => {
+    const m = new Map()
+    for (const g of games) {
+      if (!m.has(g.sport)) m.set(g.sport, [])
+      m.get(g.sport).push(g)
     }
-  }, [])
-
-  useEffect(() => {
-    poll()
-    const id = setInterval(poll, POLL_MS)
-    return () => clearInterval(id)
-  }, [poll])
-
-  const callPause = useCallback(async (minutes) => {
-    try {
-      await fetch(`${API}/api/pause`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ minutes }),
-      })
-      poll()
-    } catch (e) { /* swallow */ }
-  }, [poll])
-
-  const callResume = useCallback(async () => {
-    try {
-      await fetch(`${API}/api/resume`, { method: 'POST' })
-      poll()
-    } catch (e) { /* swallow */ }
-  }, [poll])
-
-  // Loading skeleton
-  if (!s) {
-    return (
-      <div className="shell grain center" style={{ minHeight: '100dvh' }}>
-        <div className="col center gap-12">
-          <div className="spin" />
-          <div className="caption" style={{ color: 'var(--ink-3)' }}>
-            {err ? `Connection error: ${err}` : 'Connecting to Signal…'}
-          </div>
+    return [...m.entries()]
+  }, [games])
+  return (
+    <div className="dashboard">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Live Games</h1>
+          <p className="page-sub">{games.length} in play across {bySport.length} leagues</p>
         </div>
       </div>
-    )
-  }
-
-  const live = s.live_games || []
-  const edges = s.edges_found || []
-  const blowout = s.blowout_log || []
-  const positions = s.open_positions || []
-  const trades = s.trade_history || []
-  const logs = s.scan_log || []
-
-  const TAB_COUNTS = {
-    live: live.length + (blowout?.filter(b => b.status === 'signal').length || 0),
-    edge: edges.filter((e) => (e.effective_edge ?? e.edge) >= (0.05)).length,
-    positions: positions.length,
-    ledger: trades.length,
-  }
-
-  return (
-    <div className="shell grain">
-      {/* ── Top bar ─────────────────────────────────────────────────── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 20, background: 'rgba(10,10,11,0.78)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: '1px solid var(--line-soft)' }}>
-        <div className="container row between" style={{ height: 60 }}>
-          <div className="row gap-10">
-            <div style={{ color: 'var(--ink)', display: 'flex' }}><Logo size={22} /></div>
-            <div className="row gap-8" style={{ alignItems: 'baseline' }}>
-              <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)' }}>Signal</span>
-              <span style={{ color: 'var(--ink-3)', fontSize: 13 }}>Sports</span>
-            </div>
-          </div>
-
-          <div className="row gap-10">
-            <StatusDot
-              state={online && !s.paused ? 'live' : !online ? 'err' : 'warn'}
-              label={!online ? 'Offline' : s.paused ? 'Paused' : s.paper_mode ? 'Paper · Live' : 'Live'}
-            />
-            <span className="pill hide-mobile" title="Uptime">
-              <span style={{ color: 'var(--ink-3)' }}>{fmtUptime(s.uptime)}</span>
-            </span>
-            <span className="pill hide-mobile" title={`${s.scan_count} scans`}>
-              <span className="mono num" style={{ color: 'var(--ink-2)' }}>{s.scan_count || 0}</span>
-              <span style={{ color: 'var(--ink-3)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase' }}>scans</span>
-            </span>
-          </div>
+      {bySport.map(([sport, gs]) => (
+        <div key={sport} className="card">
+          <div className="card-head"><div className="card-title">{SPORT_LABEL[sport] || sport}</div><div className="card-sub">{gs.length} game{gs.length !== 1 ? 's' : ''}</div></div>
+          <div className="live-list">{gs.map(g => <LiveRow key={g.espn_id} g={g} />)}</div>
         </div>
-      </header>
-
-      <main className="container" style={{ paddingBottom: 80 }}>
-        {/* ── Hero ────────────────────────────────────────────────── */}
-        <Hero s={s} onPause={callPause} onResume={callResume} />
-
-        {/* ── Engine cards row ───────────────────────────────────── */}
-        <div className="grid-4" style={{ marginBottom: 24 }}>
-          <EngineCard id="harvest" stats={s.harvest_stats} positions={positions} live={live} lastScan={s.last_harvest_scan} />
-          <EngineCard id="edge" stats={s.edge_stats} positions={positions} live={live} lastScan={s.last_edge_scan} />
-          <CapitalCard s={s} />
-          <SystemCard s={s} />
-        </div>
-
-        {/* ── Tabs ───────────────────────────────────────────────── */}
-        <div className="row between" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-          <div className="tabs">
-            <button data-active={tab === 'live'} onClick={() => setTab('live')}>
-              Live <span className="tab-count">{TAB_COUNTS.live}</span>
-            </button>
-            <button data-active={tab === 'edge'} onClick={() => setTab('edge')}>
-              Edge <span className="tab-count">{TAB_COUNTS.edge}</span>
-            </button>
-            <button data-active={tab === 'positions'} onClick={() => setTab('positions')}>
-              Positions <span className="tab-count">{TAB_COUNTS.positions}</span>
-            </button>
-            <button data-active={tab === 'ledger'} onClick={() => setTab('ledger')}>
-              Ledger <span className="tab-count">{TAB_COUNTS.ledger}</span>
-            </button>
-            <button data-active={tab === 'analytics'} onClick={() => setTab('analytics')}>
-              Analytics
-            </button>
-          </div>
-        </div>
-
-        {/* ── Tab content ────────────────────────────────────────── */}
-        {tab === 'live' && (
-          <div className="col gap-20" style={{ marginBottom: 24 }}>
-            <LiveGames games={live} blowoutLog={blowout} />
-            <BlowoutLog log={blowout} />
-          </div>
-        )}
-        {tab === 'edge' && (
-          <div style={{ marginBottom: 24 }}>
-            <EdgeScanner edges={edges} threshold={0.05} />
-          </div>
-        )}
-        {tab === 'positions' && (
-          <div style={{ marginBottom: 24 }}>
-            <OpenPositions positions={positions} />
-          </div>
-        )}
-        {tab === 'ledger' && (
-          <div style={{ marginBottom: 24 }}>
-            <TradeLedger trades={trades} />
-          </div>
-        )}
-        {tab === 'analytics' && (
-          <div className="col gap-20" style={{ marginBottom: 24 }}>
-            <LineupSignalsCard s={s} />
-            <SportBreakdown sportsStats={s.sports_stats} />
-            <div className="grid-2">
-              <ActivityCard s={s} />
-              <ActivityFeed logs={logs} />
-            </div>
-          </div>
-        )}
-
-        {/* ── Always-on: activity feed (except on analytics which shows it already) ── */}
-        {tab !== 'analytics' && (
-          <ActivityFeed logs={logs} />
-        )}
-
-        <footer style={{ paddingTop: 40, textAlign: 'center' }}>
-          <span className="tiny" style={{ color: 'var(--ink-4)' }}>
-            Signal Harvest v18 · {s.paper_mode ? 'paper' : 'live'} · updates every {Math.round(POLL_MS / 1000)}s
-          </span>
-        </footer>
-      </main>
+      ))}
+      {bySport.length === 0 && <div className="card"><Empty label="No live games right now" /></div>}
     </div>
   )
 }
+
+function AnalyticsPage({ state, stats }) {
+  const sportsStats = state.sports_stats || {}
+  const entries = Object.entries(sportsStats).sort((a, b) => (b[1]?.pnl || 0) - (a[1]?.pnl || 0))
+  return (
+    <div className="dashboard">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Analytics</h1>
+          <p className="page-sub">Performance breakdown by sport</p>
+        </div>
+      </div>
+      <div className="card">
+        {entries.length === 0 && <Empty label="No per-sport data yet" />}
+        {entries.length > 0 && (
+          <table className="ledger">
+            <thead><tr><th>Sport</th><th className="r">Trades</th><th className="r">Wins</th><th className="r">Win %</th><th className="r">P&L</th></tr></thead>
+            <tbody>
+              {entries.map(([sport, s]) => (
+                <tr key={sport}>
+                  <td className="bold">{SPORT_LABEL[sport] || sport}</td>
+                  <td className="r mono">{s.trades || 0}</td>
+                  <td className="r mono">{s.wins || 0}</td>
+                  <td className="r mono">{fmtPct((s.wins || 0) / Math.max(1, s.trades || 1), 0)}</td>
+                  <td className={`r mono ${(s.pnl || 0) >= 0 ? 'p-up' : 'p-down'}`}>{fmtSignedUSD(s.pnl || 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EnginePage({ engine, state, stats }) {
+  const trades = stats.trades.filter(t => t.engine === engine)
+  const open = stats.open.filter(p => p.engine === engine)
+  const pnl = trades.reduce((s, t) => s + (t.pnl || 0), 0)
+  const wins = trades.filter(t => (t.pnl || 0) > 0).length
+  const wr = trades.length ? wins / trades.length : 0
+  const title = engine === 'harvest' ? 'Harvest Engine' : 'Edge Engine'
+  const desc = engine === 'harvest' ? 'Blowout late-game detection · buy leading team near certain outcomes' : 'Sharp bookmaker pre-game prices vs Polymarket · find mispriced markets'
+  return (
+    <div className="dashboard">
+      <div className="page-head">
+        <div><h1 className="page-title">{title}</h1><p className="page-sub">{desc}</p></div>
+      </div>
+      <div className="row row-heroes">
+        <div className="hero"><div className="hero-head"><div className="hero-icon-tile">{renderIcon(engine)}</div></div><div className="hero-title">Realized</div><div className="hero-sub">{trades.length} trades · {fmtPct(wr, 0)} win rate</div><div className="hero-row"><div className="hero-value mono">{fmtSignedUSD(pnl)}</div></div><div className="hero-foot"><span>Avg {fmtSignedUSD(trades.length ? pnl / trades.length : 0)}</span></div></div>
+        <div className="hero"><div className="hero-head"><div className="hero-icon-tile">{renderIcon('positions')}</div></div><div className="hero-title">Open</div><div className="hero-sub">Currently deployed</div><div className="hero-row"><div className="hero-value mono">{open.length}</div></div><div className="hero-foot"><span>Cost {fmtUSD(open.reduce((s,p) => s+(p.cost||0), 0), 0)}</span></div></div>
+        <div className="hero"><div className="hero-head"><div className="hero-icon-tile">{renderIcon('live')}</div></div><div className="hero-title">Last scan</div><div className="hero-sub">Engine activity</div><div className="hero-row"><div className="hero-value mono">{fmtAgo(engine === 'harvest' ? state.last_harvest_scan : state.last_edge_scan)}</div></div></div>
+      </div>
+      <div className="card">
+        <div className="card-head"><div className="card-title">Recent {title} trades</div></div>
+        {trades.length === 0 && <Empty label="No trades yet" />}
+        {trades.length > 0 && (
+          <table className="ledger">
+            <thead><tr><th>Team</th><th>Market</th><th className="r">Entry</th><th className="r">Exit</th><th className="r">P&L</th><th>When</th></tr></thead>
+            <tbody>{[...trades].reverse().slice(0, 20).map(t => <tr key={t.id}><td className="bold">{t.team}</td><td className="dim">{t.market_question || '—'}</td><td className="r mono">{fmtCents(t.entry_price)}</td><td className="r mono">{fmtCents(t.exit_price)}</td><td className={`r mono ${(t.pnl || 0) >= 0 ? 'p-up' : 'p-down'}`}>{fmtSignedUSD(t.pnl)}</td><td className="dim">{fmtAgo(t.closed_at)}</td></tr>)}</tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LineupPage({ state }) {
+  const sigs = state.lineup_signals || []
+  const budget = state.lineup_api_budget || {}
+  return (
+    <div className="dashboard">
+      <div className="page-head"><div><h1 className="page-title">Lineup Watcher</h1><p className="page-sub">Pre-game team-news monitoring for J2, A-League, Championship</p></div></div>
+      <div className="row row-heroes">
+        <div className="hero"><div className="hero-head"><div className="hero-icon-tile">{renderIcon('lineup')}</div></div><div className="hero-title">Status</div><div className="hero-sub">{state.lineup_watcher_enabled ? 'Active' : 'Disabled'}</div><div className="hero-row"><div className="hero-value mono" style={{fontSize: '1.8rem'}}>{state.lineup_watcher_enabled ? 'ON' : 'OFF'}</div></div></div>
+        <div className="hero"><div className="hero-head"><div className="hero-icon-tile">{renderIcon('analytics')}</div></div><div className="hero-title">API Budget</div><div className="hero-sub">Hourly quota</div><div className="hero-row"><div className="hero-value mono">{budget.used || 0}/{budget.limit || 100}</div></div></div>
+        <div className="hero"><div className="hero-head"><div className="hero-icon-tile">{renderIcon('live')}</div></div><div className="hero-title">Active Signals</div><div className="hero-sub">Team-news shifts detected</div><div className="hero-row"><div className="hero-value mono">{sigs.length}</div></div></div>
+      </div>
+      <div className="card">
+        <div className="card-head"><div className="card-title">Recent signals</div></div>
+        {sigs.length === 0 && <Empty label="No lineup signals yet" />}
+      </div>
+    </div>
+  )
+}
+
+// ───────── Shared ─────────
+function Pill({ label, tone = 'muted' }) {
+  return <span className={`pill pill-tone-${tone}`}><span className="dot" />{label}</span>
+}
+function Empty({ label }) { return <div className="empty">{label}</div> }
+function LoadingSplash() { return <div className="splash"><div className="splash-mark"><I.logo /></div><div className="splash-text">Signal</div></div> }
+function FatalError({ err }) { return <div className="splash"><div className="splash-text">Can't reach bot</div><div className="splash-err">{err}</div></div> }
+
+// ───────── Close confirmation ─────────
+function ConfirmClose({ target, onDone }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const close = async () => {
+    setBusy(true)
+    try {
+      const url = target === 'all' ? `${API}/api/close-all` : `${API}/api/close/${target}`
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: target === 'all' ? JSON.stringify({ confirm: 'CLOSE_ALL' }) : '{}' })
+      const j = await r.json()
+      setResult(j)
+    } catch (e) { setResult({ error: e.message }) }
+    setBusy(false)
+  }
+  return (
+    <div className="modal-bg" onClick={onDone}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><div className="modal-title">{target === 'all' ? 'Close all positions?' : 'Close position?'}</div><button className="ic-btn" onClick={onDone}><I.close /></button></div>
+        <div className="modal-body">
+          {!result && <p>This will mark-to-market all open positions at current bid prices. Paper mode — no real funds move.</p>}
+          {result?.ok && <div><p>Closed {result.closed || 1} position(s).</p><p className="mono">P&L: {fmtSignedUSD(result.total_pnl ?? result.pnl)}</p></div>}
+          {result?.error && <p className="p-down">{result.error}</p>}
+        </div>
+        <div className="modal-foot">
+          {!result && <><button className="btn-ghost" onClick={onDone}>Cancel</button><button className="btn-primary" onClick={close} disabled={busy}>{busy ? 'Closing…' : 'Close'}</button></>}
+          {result && <button className="btn-primary" onClick={onDone}>Done</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ───────── (end) ─────────
