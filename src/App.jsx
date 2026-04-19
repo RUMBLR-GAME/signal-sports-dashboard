@@ -197,7 +197,7 @@ export default function App() {
 
           <div className="section grid-2">
             <EquityCard state={state} stats={stats} />
-            <ExposureCard stats={stats} />
+            <ExposureCard stats={stats} state={state} />
           </div>
 
           <section ref={sectionRefs.edges} className="section">
@@ -289,30 +289,33 @@ function HeroRow({ stats, state, onCloseAll }) {
   const dayUp = stats.todayPnl >= 0
   const totUp = stats.pct >= 0
   const clv = stats.avgClv
+  const sparkPts = useEquityCurve(state, stats)
   return (
     <div className="hero-row hero-row-4">
       <div className="hero hero-featured">
         <div className="hero-head"><SignalMark size={14} /><span>Equity</span></div>
-        <div className="hero-big mono">{fmtUSD(stats.equity, 2)}</div>
+        <div className="hero-big display">{fmtUSD(stats.equity, 2)}</div>
         <div className={`hero-sub ${totUp ? 'p-up' : 'p-down'}`}>
-          {fmtSignedPct(stats.pct)} · {fmtSigned(stats.realized + stats.unrealized)}
+          <span className="mono">{fmtSignedPct(stats.pct)}</span>
+          <span style={{ opacity: 0.5 }}>·</span>
+          <span className="mono">{fmtSigned(stats.realized + stats.unrealized)}</span>
         </div>
+        <HeroSparkline points={sparkPts} />
       </div>
 
       <div className="hero">
         <div className="hero-head"><span>Today</span></div>
-        <div className={`hero-mid mono ${dayUp ? 'p-up' : 'p-down'}`}>{fmtSigned(stats.todayPnl)}</div>
-        <div className="hero-sub dim">{stats.todayTrades} trades</div>
+        <div className={`hero-mid display ${dayUp ? 'p-up' : 'p-down'}`}>{fmtSigned(stats.todayPnl)}</div>
+        <div className="hero-sub dim mono">{stats.todayTrades} trades</div>
       </div>
 
       <div className="hero">
         <div className="hero-head"><span>Avg CLV</span></div>
-        <div className={`hero-mid mono ${clv == null ? 'dim' : clv >= 0 ? 'p-up' : 'p-down'}`}>
+        <div className={`hero-mid display ${clv == null ? 'dim' : clv >= 0 ? 'p-up' : 'p-down'}`}>
           {clv == null ? '—' : `${clv >= 0 ? '+' : ''}${(clv * 100).toFixed(2)}¢`}
         </div>
-        <div className="hero-sub dim">
-          {stats.beatClose == null ? 'no data' : `${Math.round(stats.beatClose * 100)}% beat close`}
-          {stats.clvTrades.length > 0 && <span className="dim"> · {stats.clvTrades.length}</span>}
+        <div className="hero-sub dim mono">
+          {stats.beatClose == null ? 'no data yet' : `${Math.round(stats.beatClose * 100)}% beat close · ${stats.clvTrades.length}`}
         </div>
       </div>
 
@@ -321,13 +324,45 @@ function HeroRow({ stats, state, onCloseAll }) {
           <span>Deployed</span>
           {stats.open.length > 0 && <button className="hero-btn" onClick={onCloseAll}>Close all</button>}
         </div>
-        <div className="hero-mid mono">{fmtUSD(stats.deployed, 0)}</div>
-        <div className="exposure-bar">
-          <div className="exposure-fill" style={{ width: `${Math.min(100, stats.exposure * 100)}%` }} />
-        </div>
-        <div className="hero-sub dim">{fmtPct(stats.exposure)} · {stats.open.length} positions</div>
+        <div className="hero-mid display">{fmtUSD(stats.deployed, 0)}</div>
+        <div className="hero-sub dim mono">{fmtPct(stats.exposure, 0)} · {stats.open.length} positions</div>
+        <HeroRing pct={Math.min(1, stats.exposure)} />
       </div>
     </div>
+  )
+}
+
+function HeroSparkline({ points }) {
+  if (!points || points.length < 2) return null
+  const W = 76, H = 24
+  const vals = points.map(p => p.equity)
+  const min = Math.min(...vals), max = Math.max(...vals)
+  const r = max - min || 1
+  const xs = points.map((_, i) => (i / (points.length - 1)) * W)
+  const ys = points.map(p => H - ((p.equity - min) / r) * (H - 4) - 2)
+  const path = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+  return (
+    <svg className="hero-sparkline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <path d={path} fill="none" stroke="white" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function HeroRing({ pct }) {
+  const R = 18
+  const C = 2 * Math.PI * R
+  const offset = C * (1 - pct)
+  return (
+    <svg className="hero-ring" viewBox="0 0 44 44">
+      <circle cx="22" cy="22" r={R} className="hero-ring-track" />
+      <circle
+        cx="22" cy="22" r={R}
+        className="hero-ring-fill"
+        strokeDasharray={C}
+        strokeDashoffset={offset}
+      />
+      <text x="22" y="22" className="hero-ring-text">{Math.round(pct * 100)}</text>
+    </svg>
   )
 }
 
@@ -337,14 +372,35 @@ function EdgeFlowBar({ state }) {
   const lastScan = state.last_edge_scan
   const lastAgo = lastScan ? Math.floor(Date.now()/1000 - lastScan) : null
   const nextIn = lastScan ? Math.max(0, 120 - lastAgo) : null
+  const progressPct = nextIn != null ? ((120 - nextIn) / 120) * 100 : 0
+  const leagueCount = Math.max((odds.oddsapi_sports || []).length, (odds.espn_sports || []).length)
   return (
     <div className="edge-flow">
-      <div className="ef-item"><div className="ef-val mono">{(odds.oddsapi_sports || []).length}</div><div className="ef-lbl">leagues</div></div>
-      <div className="ef-item"><div className="ef-val mono">{odds.total || 0}</div><div className="ef-lbl">odds</div></div>
-      <div className="ef-item"><div className="ef-val mono">{diag.sides_evaluated || 0}</div><div className="ef-lbl">evaluated</div></div>
-      <div className="ef-item"><div className={`ef-val mono ${(diag.signals_generated || 0) > 0 ? 'p-up' : 'dim'}`}>{diag.signals_generated || 0}</div><div className="ef-lbl">signals</div></div>
-      <div className="ef-item"><div className="ef-val mono">{lastAgo != null ? `${lastAgo}s` : '—'}</div><div className="ef-lbl">last scan</div></div>
-      <div className="ef-item"><div className="ef-val mono">{nextIn != null ? `${nextIn}s` : '—'}</div><div className="ef-lbl">next in</div></div>
+      <div className="ef-item">
+        <div className="ef-val display">{leagueCount}</div>
+        <div className="ef-lbl">leagues</div>
+      </div>
+      <div className="ef-item">
+        <div className="ef-val display">{odds.total || 0}</div>
+        <div className="ef-lbl">odds</div>
+      </div>
+      <div className="ef-item">
+        <div className="ef-val display">{diag.sides_evaluated || 0}</div>
+        <div className="ef-lbl">evaluated</div>
+      </div>
+      <div className="ef-item">
+        <div className={`ef-val display ${(diag.signals_generated || 0) > 0 ? 'p-up' : 'dim'}`}>{diag.signals_generated || 0}</div>
+        <div className="ef-lbl">signals</div>
+      </div>
+      <div className="ef-item">
+        <div className="ef-val display">{lastAgo != null ? `${lastAgo}s` : '—'}</div>
+        <div className="ef-lbl">last scan</div>
+      </div>
+      <div className="ef-item">
+        <div className="ef-val display">{nextIn != null ? `${nextIn}s` : '—'}</div>
+        <div className="ef-lbl">next in</div>
+        <div className="ef-tick"><div className="ef-tick-bar" style={{ width: `${progressPct}%` }} /></div>
+      </div>
     </div>
   )
 }
@@ -363,8 +419,10 @@ function PositionsList({ positions, onClose }) {
       </div>
       {positions.map(p => {
         const cur = p.current_price || p.entry_price || 0
+        const entry = p.entry_price || 0
         const pnl = (p.market_value || cur * p.size) - (p.cost || 0)
         const up = pnl >= 0
+        const curUp = cur > entry
         return (
           <div key={p.id} className="pos-row">
             <div className="pos-main">
@@ -374,20 +432,20 @@ function PositionsList({ positions, onClose }) {
                 <span className="pos-sport">{SPORT_LABEL[p.sport] || p.sport}</span>
               </div>
             </div>
-            <div className="pos-book mono">
+            <div className="pos-book">
               {p.book_prob != null ? (
                 <>
                   <span className="pos-book-label">{p.provider || 'book'}</span>
-                  <span>{(p.book_prob * 100).toFixed(0)}¢</span>
+                  <span className="mono">{(p.book_prob * 100).toFixed(0)}¢</span>
                 </>
               ) : (<span className="dim">—</span>)}
             </div>
             <div className="pos-prices mono">
-              <span className="dim">{fmtCents(p.entry_price)}</span>
+              <span className="dim">{fmtCents(entry)}</span>
               <span className="sep">→</span>
-              <span>{fmtCents(cur)}</span>
+              <span className={curUp ? 'cur-up' : cur < entry ? 'cur-down' : ''}>{fmtCents(cur)}</span>
             </div>
-            <div className="pos-cost mono dim">{fmtUSD(p.cost, 0)}</div>
+            <div className="pos-cost mono">{fmtUSD(p.cost, 0)}</div>
             <div className={`pos-pnl mono ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(pnl)}</div>
             <button className="pos-close" onClick={() => onClose(p.id)} title="Close position"><I.x /></button>
           </div>
@@ -423,55 +481,105 @@ function EquityCard({ state, stats }) {
 function LiveChart({ points, starting }) {
   const [hover, setHover] = useState(null)
   const ref = useRef(null)
-  const W = 640, H = 180
-  const padL = 48, padR = 10, padT = 10, padB = 22
+  const W = 720, H = 200
+  const padL = 56, padR = 16, padT = 12, padB = 26
   const plotW = W - padL - padR, plotH = H - padT - padB
 
-  const { path, pts, min, max } = useMemo(() => {
-    if (!points.length) return { path: '', pts: [], min: 0, max: 0 }
+  const data = useMemo(() => {
+    if (!points.length) return null
     const vals = points.map(p => p.equity)
     let min = Math.min(starting, ...vals)
     let max = Math.max(starting, ...vals)
-    const r = max - min || 1
-    min -= r * 0.05; max += r * 0.05
+    const r = max - min || Math.max(starting * 0.02, 1)
+    min -= r * 0.08; max += r * 0.08
     const tMin = points[0].ts, tMax = points[points.length - 1].ts
     const dt = tMax - tMin || 1
     const xs = points.map(p => padL + ((p.ts - tMin) / dt) * plotW)
     const ys = points.map(p => padT + (1 - (p.equity - min) / (max - min)) * plotH)
     const path = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+    const bottomY = padT + plotH
+    const area = `${path} L ${xs[xs.length - 1].toFixed(1)} ${bottomY} L ${xs[0].toFixed(1)} ${bottomY} Z`
     const pts = points.map((p, i) => ({ ...p, x: xs[i], y: ys[i] }))
-    return { path, pts, min, max }
+    return { path, area, pts, min, max, tMin, tMax }
   }, [points, starting])
 
+  if (!data) return <div className="chart-empty">Building equity curve…</div>
+
   const onMove = (e) => {
-    if (!ref.current || !pts.length) return
+    if (!ref.current || !data.pts.length) return
     const rect = ref.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * W
     let best = 0, bd = Infinity
-    for (let i = 0; i < pts.length; i++) {
-      const d = Math.abs(pts[i].x - x)
+    for (let i = 0; i < data.pts.length; i++) {
+      const d = Math.abs(data.pts[i].x - x)
       if (d < bd) { bd = d; best = i }
     }
-    setHover(pts[best])
+    setHover(data.pts[best])
   }
 
-  const lineSY = padT + (1 - (starting - min) / (max - min)) * plotH
-  const last = pts[pts.length - 1]
+  const lineSY = padT + (1 - (starting - data.min) / (data.max - data.min)) * plotH
+  const last = data.pts[data.pts.length - 1]
   const up = last && last.equity >= starting
+  const fmtTime = (ts) => {
+    const d = new Date(ts * 1000)
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    return `${hh}:${mm}`
+  }
+
+  // Axis ticks: 3 y-ticks + 4 x-ticks
+  const yTicks = [data.min + (data.max - data.min) * 0.15, (data.min + data.max) / 2, data.max - (data.max - data.min) * 0.15]
+  const xStep = Math.floor(data.pts.length / 4) || 1
+  const xTicks = [0, xStep, xStep * 2, xStep * 3].filter(i => i < data.pts.length).map(i => data.pts[i])
 
   return (
     <div className="chart-wrap">
       <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="chart" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
-        <line x1={padL} x2={W - padR} y1={lineSY} y2={lineSY} className="base-line" strokeDasharray="3 3" />
-        <text x={padL - 6} y={lineSY + 3} textAnchor="end" className="chart-label">{fmtUSD(starting, 0)}</text>
-        {path && <path d={path} className={`chart-line ${up ? 'up' : 'down'}`} />}
+        <defs>
+          <linearGradient id="grad-up" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#A8D66A" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#A8D66A" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="grad-down" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#E27178" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#E27178" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Y-axis labels */}
+        {yTicks.map((v, i) => {
+          const y = padT + (1 - (v - data.min) / (data.max - data.min)) * plotH
+          return (
+            <g key={i}>
+              <text x={padL - 8} y={y + 3} textAnchor="end" className="chart-label">{fmtUSD(v, 0)}</text>
+              <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="#1F1F1F" strokeWidth="1" />
+            </g>
+          )
+        })}
+
+        {/* Starting line */}
+        <line x1={padL} x2={W - padR} y1={lineSY} y2={lineSY} className="base-line" />
+        <text x={padL - 8} y={lineSY + 3} textAnchor="end" className="chart-label" style={{ fill: '#808080' }}>{fmtUSD(starting, 0)}</text>
+
+        {/* Area fill */}
+        <path d={data.area} className={`chart-area ${up ? 'up' : 'down'}`} />
+        {/* Line */}
+        <path d={data.path} className={`chart-line ${up ? 'up' : 'down'}`} />
+
+        {/* Live pulse */}
         {last && (
           <>
-            <circle cx={last.x} cy={last.y} r="9" className={`pulse-ring ${up ? 'up' : 'down'}`} />
-            <circle cx={last.x} cy={last.y} r="5" className={`pulse-ring-2 ${up ? 'up' : 'down'}`} />
-            <circle cx={last.x} cy={last.y} r="3" className={`pulse-dot ${up ? 'up' : 'down'}`} />
+            <circle cx={last.x} cy={last.y} r="4" className={`pulse-ring-outer ${up ? 'up' : 'down'}`} />
+            <circle cx={last.x} cy={last.y} r="3.5" className={`pulse-dot ${up ? 'up' : 'down'}`} />
           </>
         )}
+
+        {/* X-axis time labels */}
+        {xTicks.map((p, i) => (
+          <text key={i} x={p.x} y={H - 8} className="chart-axis-time">{fmtTime(p.ts)}</text>
+        ))}
+
+        {/* Hover crosshair */}
         {hover && (
           <>
             <line x1={hover.x} x2={hover.x} y1={padT} y2={H - padB} className="hover-line" />
@@ -481,7 +589,7 @@ function LiveChart({ points, starting }) {
       </svg>
       {hover && (
         <div className="chart-tooltip" style={{ left: `${(hover.x / W) * 100}%` }}>
-          <div className="tt-val mono">{fmtUSD(hover.equity)}</div>
+          <div className="tt-val">{fmtUSD(hover.equity)}</div>
           <div className="tt-sub">{fmtAgo(hover.ts)} ago</div>
         </div>
       )}
@@ -489,20 +597,70 @@ function LiveChart({ points, starting }) {
   )
 }
 
-function ExposureCard({ stats }) {
+function ExposureCard({ stats, state }) {
   const available = Math.max(0, 1 - stats.exposure)
+  const pct = Math.min(1, stats.exposure)
+  const R = 48
+  const C = 2 * Math.PI * R
+  const offset = C * (1 - pct)
+  const zone = pct > 0.85 ? 'danger' : pct > 0.6 ? 'full' : 'safe'
+
+  // Caps breakdown — pull from bot state if available, else use exposure
+  const edgeDeployed = stats.open.filter(p => p.engine === 'edge').reduce((s, p) => s + (p.cost || 0), 0)
+  const edgePct = edgeDeployed / Math.max(stats.equity, 1)
+
   return (
     <div className="card">
-      <div className="card-head"><h2 className="section-title flat">Exposure</h2></div>
-      <div className="exp-big mono">{fmtPct(stats.exposure, 0)}</div>
-      <div className="exp-bar">
-        <div className="exp-seg exp-edge" style={{ flex: stats.exposure }} title={`Deployed ${fmtUSD(stats.deployed, 0)}`} />
-        <div className="exp-seg exp-avail" style={{ flex: available }} title={`Available ${fmtUSD(stats.equity - stats.deployed, 0)}`} />
+      <div className="card-head">
+        <h2 className="section-title flat">Exposure</h2>
+        <div className="label-eyebrow" style={{ color: 'var(--text-4)' }}>Real-time</div>
       </div>
-      <div className="exp-legend">
-        <div className="leg-item"><span className="leg-dot leg-edge" /><span>Deployed</span><span className="mono dim">{fmtUSD(stats.deployed, 0)}</span></div>
-        <div className="leg-item"><span className="leg-dot leg-avail" /><span>Available</span><span className="mono dim">{fmtUSD(stats.equity - stats.deployed, 0)}</span></div>
+      <div className="exp-ring-wrap">
+        <svg className="exp-ring" viewBox="0 0 112 112">
+          <circle cx="56" cy="56" r={R} className="exp-ring-track" />
+          <circle
+            cx="56" cy="56" r={R}
+            className={`exp-ring-fill zone-${zone}`}
+            strokeDasharray={C}
+            strokeDashoffset={offset}
+          />
+        </svg>
+        <div>
+          <div className="exp-big display">{fmtPct(stats.exposure, 0)}</div>
+          <div className="exp-legend" style={{ marginTop: 12 }}>
+            <div className="leg-item">
+              <span className="leg-dot leg-edge" />
+              <span className="dim">Deployed</span>
+              <span className="mono">{fmtUSD(stats.deployed, 0)}</span>
+            </div>
+            <div className="leg-item">
+              <span className="leg-dot leg-avail" />
+              <span className="dim">Available</span>
+              <span className="mono">{fmtUSD(stats.equity - stats.deployed, 0)}</span>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div className="exp-caps">
+        <Cap lbl="Total" pct={stats.exposure} cap={0.80} />
+        <Cap lbl="Edge" pct={edgePct} cap={0.80} />
+        <Cap lbl="Positions" pct={stats.open.length / 15} cap={1} raw={`${stats.open.length}/15`} />
+      </div>
+    </div>
+  )
+}
+
+function Cap({ lbl, pct, cap, raw }) {
+  const ratio = Math.min(1, pct / cap)
+  const zone = ratio > 0.9 ? 'over' : ratio > 0.7 ? 'near' : 'under'
+  return (
+    <div className="exp-cap">
+      <div className="exp-cap-lbl">{lbl}</div>
+      <div className="exp-cap-track">
+        <div className={`exp-cap-bar ${zone}`} style={{ width: `${ratio * 100}%` }} />
+      </div>
+      <div className="exp-cap-val">{raw || `${Math.round(pct * 100)}/${Math.round(cap * 100)}%`}</div>
     </div>
   )
 }
@@ -578,11 +736,25 @@ function CLVPanel({ stats }) {
   const clv = stats.clvTrades
   if (!clv.length) {
     return (
-      <div className="card">
-        <div className="clv-empty">
-          <div className="clv-empty-title">Not enough data yet</div>
-          <div className="clv-empty-sub">CLV is recorded when a position pre-game exits. Wait for a few trades to resolve at T-30 min.</div>
-          <div className="clv-empty-sub dim">CLV = entry price vs closing bookmaker line. Positive = you beat the close = real alpha.</div>
+      <div className="clv-panel empty-state">
+        <div className="clv-pending-ring">
+          <svg viewBox="0 0 48 48">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="var(--bg-4)" strokeWidth="3" />
+            <circle
+              cx="24" cy="24" r="20"
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray="30 126"
+              transform="rotate(-90 24 24)"
+            />
+          </svg>
+        </div>
+        <div>
+          <div className="clv-empty-title">Collecting data</div>
+          <div className="clv-empty-sub">CLV is captured at the T-30 min pre-game exit. First values appear after positions resolve.</div>
+          <div className="clv-empty-sub sub-2">Positive = you beat the book's closing line = real alpha.</div>
         </div>
       </div>
     )
@@ -595,19 +767,19 @@ function CLVPanel({ stats }) {
     <div className="clv-panel">
       <div className="clv-summary">
         <div className="clv-stat">
-          <div className={`clv-stat-val mono ${avg >= 0 ? 'p-up' : 'p-down'}`}>
+          <div className={`clv-stat-val ${avg >= 0 ? 'p-up' : 'p-down'}`}>
             {avg >= 0 ? '+' : ''}{(avg * 100).toFixed(2)}¢
           </div>
           <div className="clv-stat-lbl">Avg CLV</div>
         </div>
         <div className="clv-stat">
-          <div className={`clv-stat-val mono ${stats.beatClose >= 0.5 ? 'p-up' : 'p-down'}`}>
+          <div className={`clv-stat-val ${stats.beatClose >= 0.5 ? 'p-up' : 'p-down'}`}>
             {Math.round(stats.beatClose * 100)}%
           </div>
           <div className="clv-stat-lbl">Beat the close</div>
         </div>
         <div className="clv-stat">
-          <div className="clv-stat-val mono">{clv.length}</div>
+          <div className="clv-stat-val">{clv.length}</div>
           <div className="clv-stat-lbl">Samples</div>
         </div>
       </div>
@@ -655,7 +827,8 @@ function CLVPanel({ stats }) {
 }
 
 function SportBreakdown({ bySport }) {
-  const rows = Object.entries(bySport).sort((a, b) => Math.abs(b[1].pnl) - Math.abs(a[1].pnl))
+  const rows = Object.entries(bySport).sort((a, b) => b[1].pnl - a[1].pnl)
+  // Scale by the MAGNITUDE of largest absolute P&L — positives extend right of center, negatives left
   const max = Math.max(...rows.map(([, v]) => Math.abs(v.pnl)), 1)
   if (!rows.length) return <div className="empty small">No trades yet</div>
   return (
@@ -663,15 +836,24 @@ function SportBreakdown({ bySport }) {
       {rows.map(([sport, v]) => {
         const wr = v.trades ? v.wins / v.trades : 0
         const up = v.pnl >= 0
+        const wrTone = wr >= 0.6 ? 'hot' : wr >= 0.5 ? 'warm' : 'cold'
+        const barPct = (Math.abs(v.pnl) / max) * 48  // 48% of half-bar width
         return (
           <div key={sport} className="sport-row">
             <div className="sport-name">{SPORT_LABEL[sport] || sport}</div>
-            <div className="mono sport-trades dim">{v.trades}</div>
-            <div className="mono sport-wr dim">{fmtPct(wr)}</div>
-            <div className="sport-bar">
-              <div className={`sport-bar-fill ${up ? 'up' : 'down'}`} style={{ width: `${(Math.abs(v.pnl) / max) * 100}%` }} />
+            <div className="sport-trades mono dim">{v.trades}</div>
+            <div className="sport-wr-wrap">
+              <span className={`sport-wr-dot ${wrTone}`} />
+              <span className="sport-wr mono">{fmtPct(wr)}</span>
             </div>
-            <div className={`mono sport-pnl ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(v.pnl)}</div>
+            <div className="sport-bar">
+              <div className="sport-bar-center" />
+              <div
+                className={`sport-bar-fill ${up ? 'up' : 'down'}`}
+                style={{ width: `${barPct}%` }}
+              />
+            </div>
+            <div className={`sport-pnl mono ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(v.pnl)}</div>
           </div>
         )
       })}
