@@ -1,208 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RUMBLR — PvP Battle Royale on Solana</title>
-<meta name="description" content="Last degen standing wins. Provably fair PvP battle royale on Solana.">
-<meta property="og:description" content="PvP battle royale on Solana. Fixed buy-in. Equal odds. Provably fair elimination. Winner takes 88%.">
-<meta property="og:title" content="RUMBLR — Last Degen Standing">
-<meta property="og:image" content="https://rumblr.xyz/og.png?v=2">
-<meta property="og:url" content="https://rumblr.xyz">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 618.03 465.6'%3E%3Cpath d='M618.01,465.52l-168.26.08-172.7-123.66c-2.71-1.72-4.94-2.38-8.09-2.66l-100.69.03-.03,126.2-168.24-.02.02-210.64,118.49-85.44L0,168.32V.03s168.24,0,168.24,0v130.33s1.04,1.74,1.04,1.74c.25.43,1.75.27,2.26-.09L355.89,0l167.97.05c50.09,1.42,90.37,39.94,94.13,89.83l.05,85.74-167.2,121.14,167.17.34v168.43ZM449.59,210.84c-.01-23.61-18.71-41.33-41.69-42.29h-239.59s.02,128.48.02,128.48h281.31s-.05-86.19-.05-86.19Z' fill='%23CEE200'/%3E%3C/svg%3E">
-<meta name="robots" content="index, follow">
-<meta name="author" content="RUMBLR">
-<meta name="keywords" content="solana, pvp, battle royale, crypto game, gambling, degen, sol, non-custodial, provably fair, blockchain game, web3 gaming, solana game, last man standing, battle royale crypto">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="RUMBLR">
-<meta property="og:locale" content="en_US">
-<meta name="twitter:site" content="@rumblrxyz">
-<meta name="twitter:creator" content="@rumblrxyz">
-<meta name="twitter:title" content="RUMBLR — Last Degen Standing | PvP Battle Royale on Solana">
-<meta name="twitter:description" content="Fixed buy-in. Equal odds. Provably fair elimination. Winner takes 88%. Non-custodial. Built on Solana.">
-<meta name="twitter:image" content="https://rumblr.xyz/og.png?v=2">
-<link rel="canonical" href="https://rumblr.xyz">
-<meta name="theme-color" content="#CEE200">
-<meta name="application-name" content="RUMBLR">
-<meta name="apple-mobile-web-app-title" content="RUMBLR">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-:root{--f:'Space Grotesk',sans-serif;--m:'JetBrains Mono',monospace;--e:cubic-bezier(.16,1,.3,1);--px:clamp(28px,7vw,120px);--mx:1100px;--bg:#060809;--fg:#EDEDF0;--fg2:#6E6E80;--fg3:#333340;--ac:#CEE200;--red:#EF4444;--line:rgba(255,255,255,.06);--nav:rgba(6,8,9,.88);--lf:#EDEDF0;--hover:rgba(255,255,255,.03);--bd:#1A1D22;--t:#E8E8EC;--t2:#8A8A96;--t3:#4A4A56}
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:var(--f);background:var(--bg);color:var(--fg);overflow-x:hidden;-webkit-font-smoothing:antialiased}::selection{background:var(--ac);color:#000}a{color:inherit;text-decoration:none;cursor:pointer}
-#loader{position:fixed;inset:0;z-index:9999;background:var(--ac);display:flex;align-items:center;justify-content:center;transition:opacity .5s,visibility .5s}#loader.done{opacity:0;visibility:hidden}#loader>svg{width:88px;animation:lp 1s ease-in-out infinite}#loader path{fill:#000}@keyframes lp{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.9);opacity:.35}}
-nav{position:fixed;top:0;left:0;right:0;z-index:999;height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--px);transition:background .3s,backdrop-filter .3s}nav.scrolled{background:var(--nav);backdrop-filter:blur(24px)}
-.nl{display:flex;align-items:center;gap:10px}.nl svg{width:24px}.nl path{fill:var(--lf)}.nl span{font-family:var(--m);font-weight:700;font-size:12px;letter-spacing:3px}.nr{display:flex;align-items:center;gap:6px}.nk{font-family:var(--m);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--fg2);padding:10px 16px;transition:color .2s}.nk:hover{color:var(--fg)}.nc{font-family:var(--m);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:9px 22px;background:var(--ac);color:#000;transition:transform .2s var(--e),box-shadow .3s}.nc:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(206,226,0,.18)}
-.nb{display:none;width:32px;height:32px;background:0;border:0;cursor:pointer;position:relative;margin-left:12px}.nb span{display:block;width:20px;height:1.5px;background:var(--fg);position:absolute;left:6px;transition:transform .3s var(--e),opacity .2s}.nb span:nth-child(1){top:11px}.nb span:nth-child(2){top:16px}.nb span:nth-child(3){top:21px}.nb.open span:nth-child(1){transform:translateY(5px) rotate(45deg)}.nb.open span:nth-child(2){opacity:0}.nb.open span:nth-child(3){transform:translateY(-5px) rotate(-45deg)}
-.nm{display:none;position:fixed;top:68px;left:0;right:0;bottom:0;background:var(--bg);z-index:998;padding:40px var(--px);flex-direction:column;overflow-y:auto}.nm.open{display:flex}.nm a{font-family:var(--m);font-size:14px;letter-spacing:2px;text-transform:uppercase;color:var(--fg2);padding:20px 0;border-bottom:1px solid var(--line);transition:color .2s}.nm a:hover{color:var(--fg)}.nm .ns{font-size:9px;letter-spacing:3px;color:var(--fg3);margin-top:36px;margin-bottom:10px}
-.hero{min-height:100svh;display:grid;grid-template-columns:1fr 1fr;align-items:center;padding:120px var(--px) 80px;max-width:calc(var(--mx) + 240px);margin:0 auto;gap:clamp(40px,5vw,60px)}.hero-text{opacity:0;animation:fi .8s var(--e) .6s forwards}.hero h1{font-size:clamp(40px,5.5vw,72px);font-weight:700;line-height:1.05;letter-spacing:-.04em;margin-bottom:24px}.hero h1 .ac{color:var(--ac)}.hero p{font-size:clamp(15px,1.4vw,18px);font-weight:300;color:var(--fg2);line-height:1.65;max-width:420px;margin-bottom:40px}.hero-btns{display:flex;gap:14px}
-.bp{font-family:var(--m);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:15px 40px;background:var(--ac);color:#000;display:inline-block;cursor:pointer;transition:transform .2s var(--e),box-shadow .3s}.bp:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(206,226,0,.22)}
-.hero-logo-wrap{display:flex;align-items:center;justify-content:center;opacity:0;animation:fi 1s var(--e) .3s forwards}.hero-logo{width:clamp(260px,34vw,460px);height:auto;will-change:transform}.hero-logo path{fill:var(--lf);transform-origin:center}@keyframes fi{to{opacity:1}}
-.dv{height:1px;background:var(--line)}.sec{padding:clamp(100px,14vw,180px) var(--px)}.si{max-width:var(--mx);margin:0 auto}.sec-t{font-size:clamp(28px,4vw,48px);font-weight:700;line-height:1.12;letter-spacing:-.03em;margin-bottom:20px}.sec-d{font-size:clamp(15px,1.3vw,17px);font-weight:300;color:var(--fg2);line-height:1.7;max-width:480px}
-.game-wrap{display:grid;grid-template-columns:1fr auto;gap:clamp(32px,4vw,64px);align-items:center}
-.phone{width:300px;height:600px;background:#080A0C;border:2px solid #222;border-radius:36px;padding:10px;box-shadow:0 24px 80px rgba(0,0,0,.5)}.phone-inner{width:100%;height:100%;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;background:#080A0C}.phone-notch{height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.phone-notch::after{content:'';width:80px;height:6px;background:#1a1a1a;border-radius:3px}
-.mg-stats{display:flex;height:40px;border-bottom:1px solid var(--bd);flex-shrink:0}.mg-stat{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid var(--bd)}.mg-stat:last-child{border-right:none}.mg-stat .l{font-family:var(--m);font-size:7px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase}.mg-stat .v{font-family:var(--m);font-size:12px;font-weight:700;color:var(--t)}.mg-stat .v.y{color:var(--ac)}
-.mg-chart{flex:1;position:relative;overflow:hidden;min-height:0}.mg-chart canvas{width:100%;height:100%}.mg-feed{height:120px;flex-shrink:0;overflow:hidden;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)}.mg-feed-h{font-family:var(--m);font-size:7px;color:var(--t3);letter-spacing:.08em;padding:8px 14px 4px;text-transform:uppercase}.mg-feed-i{padding:6px 14px;font-size:9px;font-family:var(--m);color:var(--t2);line-height:1.4;border-bottom:1px solid rgba(255,255,255,.03)}.mg-feed-i .rk{color:var(--red);font-weight:700}.mg-feed-i .wn{color:var(--ac);font-weight:700}
-.mg-jeet{display:flex;height:44px;flex-shrink:0}.mg-jeet-v{flex:1;display:flex;align-items:center;justify-content:center;font-family:var(--m);font-size:13px;font-weight:700;color:var(--ac)}.mg-jeet-b{width:100px;display:flex;align-items:center;justify-content:center;background:var(--red);font-family:var(--m);font-size:11px;font-weight:700;letter-spacing:1px;color:#fff}
-.feed{font-family:var(--m);font-size:12px;line-height:2.4;color:var(--fg);max-height:300px;overflow:hidden;margin-top:28px}.feed .e{color:var(--red);font-weight:700}.feed .w{color:var(--ac);font-weight:700}.feed .j{color:var(--ac);font-weight:700}
-.how-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);margin-bottom:64px}.how-card{background:var(--bg);padding:clamp(32px,3.5vw,48px);transition:background .3s}.how-card:hover{background:var(--hover)}.how-card .num{font-family:var(--m);font-size:10px;font-weight:700;color:var(--ac);letter-spacing:1px;margin-bottom:16px}.how-card h3{font-size:16px;font-weight:600;margin-bottom:10px}.how-card p{font-size:13px;color:var(--fg2);line-height:1.7;font-weight:300}
-.pbar{height:clamp(120px,14vw,168px);display:flex;overflow:hidden;margin-bottom:24px}.pbar-seg{display:flex;align-items:center;justify-content:center;font-family:var(--m);font-size:15px;font-weight:700;letter-spacing:1px;color:#fff;width:0;transition:width 3s var(--e)}.pbar-seg.vis{width:var(--w)}.pb-1{background:var(--ac);color:#000;--w:88%;font-size:18px}.pb-2{background:var(--fg);color:var(--bg);--w:10%}.pb-3{background:var(--fg2);--w:1%}.pb-4{background:var(--red);--w:1%}
-.pbar-labels{display:flex;gap:32px;font-family:var(--m);font-size:13px;color:var(--fg);letter-spacing:.5px;flex-wrap:wrap}.pbar-labels i{display:inline-block;width:12px;height:12px;margin-right:10px;vertical-align:middle;border-radius:1px}
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);margin-top:48px}.feat{background:var(--bg);padding:clamp(32px,3.5vw,48px);transition:background .3s}.feat:hover{background:var(--hover)}.feat-ico{width:36px;height:36px;margin-bottom:20px}.feat-ico svg{width:100%;height:100%;stroke:var(--fg3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:stroke .3s}.feat:hover .feat-ico svg{stroke:var(--ac)}.feat h3{font-size:15px;font-weight:600;margin-bottom:10px}.feat p{font-size:13px;line-height:1.75;color:var(--fg2);font-weight:300}
-.lobbies{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);margin-top:48px}.lobby{background:var(--bg);padding:clamp(28px,4vw,48px);text-align:center;transition:background .3s;position:relative;overflow:hidden}.lobby:hover{background:var(--hover)}.lobby-n{font-family:var(--m);font-size:clamp(24px,3.5vw,40px);font-weight:700;margin-bottom:6px;transition:transform .35s var(--e)}.lobby-u{font-family:var(--m);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--fg2);transition:opacity .3s}
-.lobby-wins{opacity:0;max-height:0;overflow:hidden;transition:opacity .4s var(--e),max-height .4s var(--e);padding:0 12px}.lobby:hover .lobby-wins{opacity:1;max-height:140px;padding:16px 12px 0}.lobby:hover .lobby-n{transform:scale(.85)}.lobby:hover .lobby-u{opacity:0}
-.lw-h{font-family:var(--m);font-size:11px;font-weight:700;letter-spacing:2px;color:var(--fg);text-transform:uppercase;margin-bottom:12px}.lw-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-family:var(--m);font-size:12px;white-space:nowrap}.lw-p{color:var(--fg2)}.lw-v{color:var(--ac);font-weight:700}
-.cta{text-align:center;padding:clamp(140px,20vw,260px) var(--px)}.cta-logo{width:clamp(80px,14vw,150px);margin:0 auto 44px;display:block}.cta-logo path{fill:var(--lf)}.cta h2{font-size:clamp(30px,5vw,56px);font-weight:700;letter-spacing:-.03em;margin-bottom:20px}.cta p{font-size:clamp(15px,1.3vw,17px);color:var(--fg2);font-weight:300;margin-bottom:48px}
-footer{border-top:1px solid var(--line);padding:56px var(--px) 44px}.ft-i{max-width:var(--mx);margin:0 auto;display:grid;grid-template-columns:1fr auto;gap:48px;align-items:start}.ft-b{display:flex;align-items:center;gap:10px;margin-bottom:20px}.ft-b svg{width:18px}.ft-b path{fill:var(--fg2)}.ft-b span{font-family:var(--m);font-weight:700;font-size:10px;letter-spacing:2px;color:var(--fg2)}.ft-c{font-family:var(--m);font-size:11px;color:var(--fg2);line-height:1.8}.ft-cols{display:flex;gap:clamp(32px,5vw,72px)}.ft-col h5{font-family:var(--m);font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--fg2);margin-bottom:16px}.ft-col a{display:block;font-size:13px;color:var(--fg2);padding:5px 0;transition:color .2s}.ft-col a:hover{color:var(--fg)}.ft-btm{max-width:var(--mx);margin:36px auto 0;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.ft-btm span{font-family:var(--m);font-size:9px;color:var(--fg2);letter-spacing:1px}.ft-soc{display:flex;gap:16px}.ft-soc a{color:var(--fg2);transition:color .2s}.ft-soc a:hover{color:var(--fg)}.ft-soc svg{width:15px;height:15px;fill:currentColor}
-.rv{opacity:0;transform:translateY(28px);transition:opacity .9s var(--e),transform .9s var(--e)}.rv.v{opacity:1;transform:translateY(0)}
-@media(max-width:900px){
-.game-wrap{text-align:center}
-.duel-stats{justify-content:center!important}
-.sec-d{text-align:center}
-.nr .nk{display:none}.nb{display:block}.hero{grid-template-columns:1fr;text-align:center;padding:100px var(--px) 60px}.hero-btns{justify-content:center}.hero p{margin:0 auto 40px}.hero-logo-wrap{order:-1;margin-bottom:20px}.hero-logo{width:clamp(200px,50vw,300px)}.hero h1{font-size:clamp(36px,10vw,56px)}.si{text-align:center}.sec{padding:clamp(72px,12vw,140px) var(--px)}.sec-t{font-size:clamp(30px,8vw,44px)}.sec-d{margin-left:auto;margin-right:auto}.game-wrap{grid-template-columns:1fr;gap:40px}.phone{margin:0 auto;width:260px;height:520px}.game-wrap .feed{text-align:left;margin:28px auto 0;max-width:400px}.how-grid{grid-template-columns:1fr;gap:0}.how-card{border-bottom:1px solid var(--line)}.how-card:last-child{border-bottom:none}.feat-grid{grid-template-columns:1fr 1fr}.feat{text-align:center}.feat-ico{margin:0 auto 20px}.lobbies{grid-template-columns:1fr 1fr;gap:1px}.lobby{border-bottom:1px solid var(--line);padding:clamp(20px,4vw,32px)}.lobby:last-child{border-bottom:none}.lobby-n{font-size:clamp(28px,8vw,36px)}.lobby-wins{opacity:1;max-height:none;padding:8px 0 0;display:flex;gap:0}.lobby:hover .lobby-n{transform:none}.lobby:hover .lobby-u{opacity:1}.lw-h{display:none}.lw-row{flex:1;flex-direction:column;align-items:center;gap:2px;font-size:10px}.pbar{height:clamp(80px,16vw,120px)}.pbar-labels{justify-content:center;font-size:11px;gap:16px}.ft-i{grid-template-columns:1fr;text-align:center}.ft-b{justify-content:center}.ft-cols{justify-content:center;flex-wrap:wrap;gap:clamp(24px,4vw,48px)}.ft-btm{flex-direction:column;gap:12px;text-align:center}}
-@media(max-width:480px){.feat-grid{grid-template-columns:1fr}.ft-cols{flex-direction:column;gap:24px;align-items:center}.hero-btns{flex-direction:column;align-items:center}.bp{width:100%;max-width:260px;text-align:center}.phone{width:240px;height:480px}}
-</style>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"RUMBLR","url":"https://rumblr.xyz","description":"PvP battle royale on Solana. Fixed buy-in, equal odds, provably fair elimination. Winner takes 88%.","applicationCategory":"GameApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Organization","name":"RUMBLR","url":"https://rumblr.xyz","sameAs":["https://x.com/rumblrxyz","https://github.com/RUMBLR-GAME"]}}</script>
-</head>
-<body>
-<div id="loader"><svg viewBox="0 0 618.03 465.6"><path d="M618.01,465.52l-168.26.08-172.7-123.66c-2.71-1.72-4.94-2.38-8.09-2.66l-100.69.03-.03,126.2-168.24-.02.02-210.64,118.49-85.44L0,168.32V.03s168.24,0,168.24,0v130.33s1.04,1.74,1.04,1.74c.25.43,1.75.27,2.26-.09L355.89,0l167.97.05c50.09,1.42,90.37,39.94,94.13,89.83l.05,85.74-167.2,121.14,167.17.34v168.43ZM449.59,210.84c-.01-23.61-18.71-41.33-41.69-42.29h-239.59s.02,128.48.02,128.48h281.31s-.05-86.19-.05-86.19Z"/></svg></div>
-<nav id="nav"><a href="/" class="nl"><svg viewBox="0 0 618.03 465.6"><path d="M618.01,465.52l-168.26.08-172.7-123.66c-2.71-1.72-4.94-2.38-8.09-2.66l-100.69.03-.03,126.2-168.24-.02.02-210.64,118.49-85.44L0,168.32V.03s168.24,0,168.24,0v130.33s1.04,1.74,1.04,1.74c.25.43,1.75.27,2.26-.09L355.89,0l167.97.05c50.09,1.42,90.37,39.94,94.13,89.83l.05,85.74-167.2,121.14,167.17.34v168.43ZM449.59,210.84c-.01-23.61-18.71-41.33-41.69-42.29h-239.59s.02,128.48.02,128.48h281.31s-.05-86.19-.05-86.19Z"/></svg><span>RUMBLR</span></a><div class="nr"><a href="#duel" class="nk">Duel</a><a href="#game" class="nk">Royale</a><a href="#how" class="nk">How it works</a><a href="#features" class="nk">Features</a><a href="https://rumblr.xyz/audit.html" class="nk" target="_blank">Audit</a><a href="https://rumblr.xyz/play" class="nc">JOIN BETA</a><button class="nb" id="burger" onclick="toggleMenu()"><span></span><span></span><span></span></button></div></nav>
-<div class="nm" id="mm"><a href="#duel" onclick="closeMenu()">Duel</a><a href="#game" onclick="closeMenu()">Royale</a><a href="#how" onclick="closeMenu()">How it works</a><a href="#features" onclick="closeMenu()">Features</a><a href="https://rumblr.xyz/play" onclick="closeMenu()">Join Beta</a><div class="ns">RESOURCES</div><a href="https://rumblr.xyz/audit.html" target="_blank">Security Audit</a><a href="https://github.com/RUMBLR-GAME/rumblr-contracts" target="_blank">Smart Contracts</a><div class="ns">LEGAL</div><a href="https://rumblr.xyz/play?page=terms">Terms of Service</a><a href="https://rumblr.xyz/play?page=rg">Responsible Gambling</a></div>
-<section class="hero"><div class="hero-text"><h1>Last degen<br><span class="ac">standing.</span></h1><p>PvP on Solana. Duel anyone 1v1 or enter the Royale. Provably fair elimination, non-custodial vaults, huge daily jackpots.</p><div class="hero-btns"><a href="https://rumblr.xyz/play" class="bp">JOIN BETA</a></div></div><div class="hero-logo-wrap" id="hlw"><svg class="hero-logo" id="hl" viewBox="0 0 618.03 465.6"><path id="hlp" d="M618.01,465.52l-168.26.08-172.7-123.66c-2.71-1.72-4.94-2.38-8.09-2.66l-100.69.03-.03,126.2-168.24-.02.02-210.64,118.49-85.44L0,168.32V.03s168.24,0,168.24,0v130.33s1.04,1.74,1.04,1.74c.25.43,1.75.27,2.26-.09L355.89,0l167.97.05c50.09,1.42,90.37,39.94,94.13,89.83l.05,85.74-167.2,121.14,167.17.34v168.43ZM449.59,210.84c-.01-23.61-18.71-41.33-41.69-42.29h-239.59s.02,128.48.02,128.48h281.31s-.05-86.19-.05-86.19Z"/></svg></div></section>
-<div class="dv"></div>
-
-<!-- RUMBLR DUEL — the 1v1 -->
-<section class="sec" id="duel"><div class="si">
-  <div class="game-wrap">
-    <div>
-      <h2 class="sec-t rv">1v1. No mercy.</h2>
-      <p class="sec-d rv">Pick your amount. Someone matches. One wallet survives. 50/50 odds, provably fair, instant payout. Duel while you wait for a Royale lobby to fill.</p>
-      <div class="duel-stats rv" style="display:flex;gap:32px;margin-top:32px">
-        <div style="font-family:var(--m)">
-          <div style="color:var(--fg3);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">ODDS</div>
-          <div style="font-size:28px;font-weight:700;color:var(--ac)">50/50</div>
-        </div>
-        <div style="font-family:var(--m)">
-          <div style="color:var(--fg3);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">TYPE</div>
-          <div style="font-size:28px;font-weight:700">PvP</div>
-        </div>
-      </div>
-      <div class="feed rv" id="dfeed2" style="margin-top:28px"></div>
-    </div>
-    <div class="rv" style="width:clamp(260px,30vw,360px);position:relative">
-      <div style="background:var(--chart-bg);border:1px solid var(--line);border-radius:8px;overflow:hidden;aspect-ratio:3/4;position:relative">
-        <canvas id="duelCvs" style="width:100%;height:100%;display:block"></canvas>
-        <div id="duelTp" style="position:absolute;right:8px;font-family:var(--m);font-size:12px;font-weight:700;color:#fff;background:#22C55E;padding:2px 8px;display:none">2.00 SOL</div>
-        <div style="position:absolute;bottom:6px;left:0;right:0;display:flex;justify-content:center;gap:clamp(30px,6vw,50px)">
-          <div style="text-align:center"><div style="font-family:var(--m);font-size:9px;font-weight:700;color:#CEE200" id="duelN1">SOL_MAXI</div></div>
-          <div style="text-align:center"><div style="font-family:var(--m);font-size:9px;font-weight:700;color:#8B5CF6" id="duelN2">WHALE.SOL</div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div></section>
-
-<div class="dv"></div>
-
-<section class="sec" id="game"><div class="si"><div class="game-wrap"><div><h2 class="sec-t rv">Rumblr Royale.<br>Last one wins.</h2><p class="sec-d rv">Join a lobby. Watch the chart pump. Every 4 seconds, a random player gets eliminated. Survive the rumble, take 88% of the entire pot.</p><div class="feed rv" id="dfeed"></div></div><div class="phone rv"><div class="phone-inner"><div class="phone-notch"></div><div class="mg-stats"><div class="mg-stat"><div class="l">LIVE POT</div><div class="v y" id="mpot">0.88</div></div><div class="mg-stat"><div class="l">ALIVE</div><div class="v" id="malive">10</div></div><div class="mg-stat"><div class="l">ROUND</div><div class="v" id="mround">0</div></div></div><div class="mg-chart"><canvas id="mc"></canvas></div><div class="mg-feed"><div class="mg-feed-h">BATTLE FEED</div><div id="mfeed"></div></div><div class="mg-jeet"><div class="mg-jeet-v" id="mjv">0.08 SOL</div><div class="mg-jeet-b">JEET!</div></div></div></div></div></div></section>
-<div class="dv"></div>
-<section class="sec" id="how"><div class="si"><h2 class="sec-t rv">How it works.</h2><p class="sec-d rv" style="margin-bottom:48px">No sign up. No KYC. Connect your Solana wallet.<br>Duel someone 1v1 or enter a Royale lobby.</p><div class="how-grid rv"><div class="how-card"><div class="num">01</div><h3>Duel or Royale</h3><p>Duel anyone 1v1 at any amount with 50/50 odds. Or join a Royale lobby from 0.10 to 5.00 SOL.</p></div><div class="how-card"><div class="num">02</div><h3>Survive the rumble</h3><p>One random player eliminated every 4 seconds via Switchboard VRF. Provably fair, on-chain.</p></div><div class="how-card"><div class="num">03</div><h3>Winner takes 88%</h3><p>Last alive gets 88% instantly. 10% funds the daily jackpot. Automatic payout, no withdrawal.</p></div></div><div class="rv" id="pbarW"><div class="pbar"><div class="pbar-seg pb-1"><span>88%</span></div><div class="pbar-seg pb-2"><span>10%</span></div><div class="pbar-seg pb-3"></div><div class="pbar-seg pb-4"></div></div><div class="pbar-labels"><span><i style="background:var(--ac)"></i>Royale Winner (88%)</span><span><i style="background:var(--fg)"></i>Jackpot (10%)</span><span><i style="background:var(--fg2)"></i>Referrals (1%)</span><span><i style="background:var(--red)"></i>Platform (1%)</span></div></div></div></section>
-<div class="dv"></div>
-<section class="sec" id="features"><div class="si"><h2 class="sec-t rv">Built different.</h2><div class="feat-grid rv"><div class="feat"><div class="feat-ico"><svg viewBox="0 0 36 36"><path d="M3 6h30v24H3z"/><path d="M12 18l4 4 8-8"/></svg></div><h3>Provably Fair</h3><p>Switchboard VRF randomness committed on-chain before each round. Verifiable by anyone.</p></div><div class="feat"><div class="feat-ico"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="14"/><polyline points="18,10 18,18 24,22"/></svg></div><h3>Instant Duels</h3><p>1v1 anyone at any amount. 50/50 odds. One VRF call. Winner gets paid in seconds.</p></div><div class="feat"><div class="feat-ico"><svg viewBox="0 0 36 36"><rect x="5" y="12" width="26" height="18" rx="2"/><path d="M11 12V8a7 7 0 0114 0v4"/></svg></div><h3>Non-Custodial</h3><p>SOL held in PDA vaults controlled by immutable smart contract code.</p></div><div class="feat"><div class="feat-ico"><svg viewBox="0 0 36 36"><path d="M18 4v28M4 18h28"/><circle cx="18" cy="18" r="6" stroke-dasharray="3 3"/></svg></div><h3>Equal Odds</h3><p>Every player has identical probability of elimination. No advantage for anyone.</p></div><div class="feat"><div class="feat-ico"><svg viewBox="0 0 36 36"><path d="M18 4l4 8h10l-7 6 2 10-9-6-9 6 2-10-7-6h10z"/></svg></div><h3>Daily Jackpot</h3><p>10% of every pot funds a daily jackpot drawn at midnight UTC.</p></div><div class="feat"><div class="feat-ico"><svg viewBox="0 0 36 36"><path d="M4 28l6-10 6 5 8-16 8 8"/></svg></div><h3>Instant Payouts</h3><p>Winners paid automatically the moment the game settles. Zero delay.</p></div></div></div></section>
-<div class="dv"></div>
-<section class="sec"><div class="si" style="text-align:center"><h2 class="sec-t rv">Royale lobbies.</h2><div class="lobbies rv" id="lobbies"></div></div></section>
-<div class="dv"></div>
-<section class="cta"><svg class="cta-logo" viewBox="0 0 618.03 465.6"><path d="M618.01,465.52l-168.26.08-172.7-123.66c-2.71-1.72-4.94-2.38-8.09-2.66l-100.69.03-.03,126.2-168.24-.02.02-210.64,118.49-85.44L0,168.32V.03s168.24,0,168.24,0v130.33s1.04,1.74,1.04,1.74c.25.43,1.75.27,2.26-.09L355.89,0l167.97.05c50.09,1.42,90.37,39.94,94.13,89.83l.05,85.74-167.2,121.14,167.17.34v168.43ZM449.59,210.84c-.01-23.61-18.71-41.33-41.69-42.29h-239.59s.02,128.48.02,128.48h281.31s-.05-86.19-.05-86.19Z"/></svg><h2>Ready to rumble?</h2><p>Duel anyone 1v1. Enter the Royale. Last degen standing wins.</p><a href="https://rumblr.xyz/play" class="bp" style="padding:17px 52px;font-size:12px">JOIN BETA</a></section>
-<footer><div class="ft-i"><div><div class="ft-b"><svg viewBox="0 0 618.03 465.6"><path d="M618.01,465.52l-168.26.08-172.7-123.66c-2.71-1.72-4.94-2.38-8.09-2.66l-100.69.03-.03,126.2-168.24-.02.02-210.64,118.49-85.44L0,168.32V.03s168.24,0,168.24,0v130.33s1.04,1.74,1.04,1.74c.25.43,1.75.27,2.26-.09L355.89,0l167.97.05c50.09,1.42,90.37,39.94,94.13,89.83l.05,85.74-167.2,121.14,167.17.34v168.43ZM449.59,210.84c-.01-23.61-18.71-41.33-41.69-42.29h-239.59s.02,128.48.02,128.48h281.31s-.05-86.19-.05-86.19Z"/></svg><span>RUMBLR</span></div><div class="ft-c">PvP battle royale on Solana.<br>Non-custodial. Provably fair. 18+.</div></div><div class="ft-cols"><div class="ft-col"><h5>PRODUCT</h5><a href="https://rumblr.xyz/play">Play</a><a href="#how">How it works</a><a href="#features">Features</a></div><div class="ft-col"><h5>RESOURCES</h5><a href="https://rumblr.xyz/audit.html" target="_blank">Security Audit</a><a href="https://github.com/RUMBLR-GAME/rumblr-contracts" target="_blank">Smart Contracts</a></div><div class="ft-col"><h5>LEGAL</h5><a href="https://rumblr.xyz/play?page=terms">Terms</a><a href="https://rumblr.xyz/play?page=rg">Responsible Gambling</a><a href="https://rumblr.xyz/play?page=docs">Docs</a></div></div></div><div class="ft-btm"><span>&copy; 2026 RUMBLR.XYZ</span><div class="ft-soc"><a href="https://x.com/rumblrxyz" target="_blank"><svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a><a href="https://github.com/RUMBLR-GAME" target="_blank"><svg viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a></div></div></footer>
-<script>
-window.addEventListener('load',function(){setTimeout(function(){document.getElementById('loader').classList.add('done')},1200)});
-window.addEventListener('scroll',function(){document.getElementById('nav').classList.toggle('scrolled',window.scrollY>50)});
-function toggleMenu(){document.getElementById('burger').classList.toggle('open');document.getElementById('mm').classList.toggle('open');document.body.style.overflow=document.getElementById('mm').classList.contains('open')?'hidden':''}
-function closeMenu(){document.getElementById('burger').classList.remove('open');document.getElementById('mm').classList.remove('open');document.body.style.overflow=''}
-var obs=new IntersectionObserver(function(e){e.forEach(function(x){if(x.isIntersecting)x.target.classList.add('v')})},{threshold:.1,rootMargin:'0px 0px -30px 0px'});document.querySelectorAll('.rv').forEach(function(el){obs.observe(el)});
-(function(){var w=document.getElementById('hlw'),s=document.getElementById('hl'),h=false,mx=.5,my=.5,cx=0,cy=0,sx=0,sy=0,sc=1,cr=0,tx=0,ty=0,tsx=0,tsy=0,tsc=1,tr=0;
-w.addEventListener('mouseenter',function(){h=true});w.addEventListener('mouseleave',function(){h=false;tx=0;ty=0;tsx=0;tsy=0;tsc=1;tr=0});
-w.addEventListener('mousemove',function(e){var r=w.getBoundingClientRect();mx=(e.clientX-r.left)/r.width;my=(e.clientY-r.top)/r.height;tx=(mx-.5)*120;ty=(my-.5)*80;tsx=(mx-.5)*60;tsy=(my-.5)*40;tsc=1+Math.abs(mx-.5)*.35+Math.abs(my-.5)*.25;tr=(mx-.5)*25});
-w.addEventListener('touchstart',function(e){h=true},{passive:true});
-w.addEventListener('touchend',function(){h=false;tx=0;ty=0;tsx=0;tsy=0;tsc=1;tr=0});
-w.addEventListener('touchmove',function(e){var t=e.touches[0];var r=w.getBoundingClientRect();mx=(t.clientX-r.left)/r.width;my=(t.clientY-r.top)/r.height;tx=(mx-.5)*120;ty=(my-.5)*80;tsx=(mx-.5)*60;tsy=(my-.5)*40;tsc=1+Math.abs(mx-.5)*.35+Math.abs(my-.5)*.25;tr=(mx-.5)*25},{passive:true});
-function a(){var sp=h?.08:.035;cx+=(tx-cx)*sp;cy+=(ty-cy)*sp;sx+=(tsx-sx)*sp;sy+=(tsy-sy)*sp;sc+=(tsc-sc)*sp;cr+=(tr-cr)*sp;s.style.transform='translate('+cx.toFixed(1)+'px,'+cy.toFixed(1)+'px) skewX('+sx.toFixed(1)+'deg) skewY('+sy.toFixed(1)+'deg) scale('+sc.toFixed(3)+') rotate('+cr.toFixed(1)+'deg)';requestAnimationFrame(a)}a()})();
-(function(){var t=[{v:.10,l:'0.10',min:50},{v:.50,l:'0.50',min:20},{v:1,l:'1.00',min:10},{v:5,l:'5.00',min:5}],el=document.getElementById('lobbies'),h='';t.forEach(function(x){var pot=(x.v*x.min*.88).toFixed(2);h+='<div class="lobby"><div class="lobby-n">'+x.l+'</div><div class="lobby-u">SOL</div><div class="lobby-wins"><div class="lw-h">WINNING POT</div><div class="lw-row"><span class="lw-p">Min '+x.min+' players</span><span class="lw-v">'+pot+'</span></div></div></div>'});el.innerHTML=h})();
-var pb=new IntersectionObserver(function(e){if(e[0].isIntersecting)document.querySelectorAll('.pbar-seg').forEach(function(s){s.classList.add('vis')})},{threshold:.3});pb.observe(document.getElementById('pbarW'));
-(function(){var c=document.getElementById('mc'),ctx=c.getContext('2d'),CW=6,CG=1,ca=[],mk=[],pr=0,pot=1,al=10,rd=0,nm=['SOL_MAXI','bigape888','WHALE.SOL','frank.sol','NGMI_420','WAGMI','MOON_BOY','COPE_MAX','JEET.SOL','FOMO.SOL'],dt=[' got rugged on $BUTTFARM69',' aped into a honeypot',' got REKT because frank bridged again',' eliminated. VRF chose violence.',' rugged by pure randomness',' sent to the shadow realm',' caught lacking',' gone. Portfolio: dust.',' rekt. Cope harder.',' yeeted by the protocol'],mf=document.getElementById('mfeed'),df=document.getElementById('dfeed'),ml=[],dl=[];
-function rn(a,b){return a+Math.random()*(b-a)}function cl(v,a,b){return Math.max(a,Math.min(b,v))}function pk(a){return a[Math.floor(Math.random()*a.length)]}ca.push({o:0,h:0,l:0,c:0,g:true});
-function aC(e){var n=e?3:2;for(var j=0;j<n;j++){var p=ca[ca.length-1],o=p.c,b=pot*rn(.01,.04),cc,h,l;if(e&&j===n-1){var d=rn(.1,.3)*pot*rn(.08,.2);cc=o-d;l=o-d*rn(1.2,2);h=o+rn(0,.01)*pot;cc=Math.max(cc,pot*.01);l=Math.max(l,0)}else if(Math.random()<.25){cc=o-rn(0,.015)*pot;l=o-rn(.005,.02)*pot;h=o+rn(0,.01)*pot;cc=Math.max(cc,pot*.01);l=Math.max(l,0)}else{var pm=Math.random()<.2?b*rn(2,5):b;cc=o+pm;l=o-rn(0,.01)*pot;h=cc+rn(.005,.025)*pot}cc=cl(cc,pot*.01,pot*1.2);h=Math.max(h,Math.max(o,cc));l=Math.min(l,Math.min(o,cc));l=Math.max(l,0);pr=cc;ca.push({o:o,h:h,l:l,c:cc,g:cc>=o})}if(e)mk.push({i:ca.length-1,p:pr})}
-function rs(){var W=c.parentElement.clientWidth,H=c.parentElement.clientHeight;c.width=W*2;c.height=H*2;c.style.width=W+'px';c.style.height=H+'px'}rs();window.addEventListener('resize',rs);
-function dr(){var W=c.width/2,H=c.height/2;ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,W,H);var mx=Math.max(pot||1,pr*1.15)||1,pT=6,pB=6;ctx.strokeStyle='#1A1D22';ctx.lineWidth=.5;for(var i=1;i<5;i++){var y=pT+(H-pT-pB)*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}var tw=CW+CG,mc=Math.floor(W/tw),si=Math.max(0,ca.length-mc),vi=ca.slice(si);vi.forEach(function(cd,i){var x=i*tw+CG,yH=pT+(1-cd.h/mx)*(H-pT-pB),yL=pT+(1-cd.l/mx)*(H-pT-pB),yO=pT+(1-cd.o/mx)*(H-pT-pB),yC=pT+(1-cd.c/mx)*(H-pT-pB);ctx.strokeStyle=cd.g?'#CEE200':'#EF4444';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x+CW/2,yH);ctx.lineTo(x+CW/2,yL);ctx.stroke();ctx.fillStyle=cd.g?'#CEE200':'#EF4444';ctx.fillRect(x,Math.min(yO,yC),CW,Math.max(Math.abs(yO-yC),1))});mk.forEach(function(m){var idx=m.i-si;if(idx<0||idx>=vi.length)return;var x=idx*tw+CG+CW/2,y=pT+(1-m.p/mx)*(H-pT-pB);ctx.fillStyle='#EF4444';ctx.beginPath();ctx.arc(x,y-12,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#000';ctx.font='bold 8px "JetBrains Mono"';ctx.textAlign='center';ctx.fillText('X',x,y-9)});requestAnimationFrame(dr)}dr();
-function am(t){ml.unshift(t);if(ml.length>6)ml.length=6;mf.innerHTML=ml.map(function(l){return'<div class="mg-feed-i">'+l+'</div>'}).join('')}
-function ad(t){dl.unshift(t);if(dl.length>8)dl.length=8;df.innerHTML=dl.map(function(l){return'<div>'+l+'</div>'}).join('')}
-function tk(){if(al<=1){var w=pk(nm);am('<span class="wn">WINNER</span> '+w+' takes 88%');ad('<span class="w">WINNER</span> '+w+' takes 88% of the pot');setTimeout(function(){al=10;pot=1;rd=0;pr=0;ca=[{o:0,h:0,l:0,c:0,g:true}];mk=[];ml=[];dl=[];mf.innerHTML='';df.innerHTML='';tk()},3500);return}rd++;var v=nm[10-al],isJ=Math.random()<.12&&al>3;aC(!isJ);if(!isJ){al--;pot-=pot*.02;am('<span class="rk">ELIMINATED</span> '+v+pk(dt));ad('<span class="e">ELIMINATED</span> '+v+pk(dt))}else{al--;pot-=pot*.05;var jv=rn(.02,.15).toFixed(2);am(v+' <span class="rk">JEETED</span> for '+jv+' SOL');ad('<span class="j">JEET</span> '+v+' cashed out '+jv+' SOL')}document.getElementById('malive').textContent=String(al);document.getElementById('mpot').textContent=pot.toFixed(2);document.getElementById('mround').textContent=String(rd);document.getElementById('mjv').textContent=rn(.02,.2).toFixed(2)+' SOL';setTimeout(tk,al>6?2500:al>3?3200:4000)}setTimeout(tk,3000)})();
-
-// Duel feed
-(function(){var df=document.getElementById('dfeed2');if(!df)return;var nm=['SOL_MAXI','bigape888','WHALE.SOL','frank.sol','NGMI_420','WAGMI','MOON_BOY','COPE_MAX'];var dl=[];function pk(a){return a[Math.floor(Math.random()*a.length)]}
-function addD(){var a=pk(nm),b=pk(nm);while(b===a)b=pk(nm);var amt=(Math.random()*4.9+0.1).toFixed(2);var w=Math.random()>.5?a:b;var l=w===a?b:a;dl.unshift('<span style="color:#CEE200;font-weight:700">'+w+'</span> won <span style="color:#CEE200">'+amt+' SOL</span> vs <span style="color:#8B5CF6">'+l+'</span>');if(dl.length>6)dl.length=6;df.innerHTML=dl.map(function(l){return'<div>'+l+'</div>'}).join('');setTimeout(addD,2000+Math.random()*3000)}setTimeout(addD,1500)})();
-
-// Duel canvas animation (landing page)
-(function(){
-  var cv=document.getElementById('duelCvs');if(!cv)return;
-  var cx=cv.getContext('2d');
-  var tp=0.82,cW=40;
-  var p1,p2,gt,gs,win;
-  
-  
-  function rn(a,b){return a+Math.random()*(b-a)}
-  function pk(a){return a[Math.floor(Math.random()*a.length)]}
-
-  function initGame(){p1={y:0,v:0,h:0};p2={y:0,v:0,h:0};gt=0;gs='race';win=null;var dn=['SOL_MAXI','bigape888','WHALE.SOL','frank.sol','NGMI_420','WAGMI','MOON_BOY','COPE_MAX','JEET.SOL','DEGEN.SOL'];if(document.getElementById('duelN1')){document.getElementById('duelN1').textContent=pk(dn);document.getElementById('duelN2').textContent=pk(dn)};
-    
-    document.getElementById('duelTp').style.display='block'}
-
-  function rsz(){var r=cv.parentElement.getBoundingClientRect();cv.width=r.width*2;cv.height=r.height*2;cv.style.width=r.width+'px';cv.style.height=r.height+'px'}
-  rsz();window.addEventListener('resize',rsz);
-
-  function draw(){
-    var W=cv.width/2,H=cv.height/2;
-    cx.setTransform(2,0,0,2,0,0);cx.clearRect(0,0,W,H);
-    var pad=20,padB=30,gH=H-pad-padB;
-    var gap=16,cx1=W/2-gap/2-cW/2,cx2=W/2+gap/2+cW/2;
-
-    // Grid
-    cx.strokeStyle='#1A1D22';cx.lineWidth=.5;
-    for(var i=1;i<5;i++){var gy=pad+gH*i/5;cx.beginPath();cx.moveTo(10,gy);cx.lineTo(W-10,gy);cx.stroke()}
-
-    // TP line
-    var tY=pad+gH*(1-tp);
-    cx.save();cx.strokeStyle='#22C55E';cx.lineWidth=1;cx.setLineDash([6,4]);
-    cx.beginPath();cx.moveTo(10,tY);cx.lineTo(W-10,tY);cx.stroke();cx.restore();
-    cx.save();cx.shadowColor='#22C55E';cx.shadowBlur=6;cx.strokeStyle='rgba(34,197,94,.12)';cx.lineWidth=3;
-    cx.beginPath();cx.moveTo(10,tY);cx.lineTo(W-10,tY);cx.stroke();cx.restore();
-    document.getElementById('duelTp').style.top=Math.round(tY*cv.offsetHeight/H-20)+'px';
-
-    if(gs==='race'){
-      gt+=1/60;var prog=gt/10,cap=tp-.03;
-      var pump=.3+prog*1.2,dump=.3+prog*.6,noise=.5+prog*1.5;
-      p1.v+=(rn(-.4,.4)*noise)/60;if(Math.random()<.06)p1.v+=rn(.01,.05)*pump;if(Math.random()<.06)p1.v-=rn(.01,.05)*dump;
-      if(prog>.6)p1.v+=rn(0,.015);p1.v*=.9;p1.y+=p1.v;p1.y=Math.max(0,Math.min(cap,p1.y));p1.h=Math.max(p1.h,p1.y);
-      p2.v+=(rn(-.4,.4)*noise)/60;if(Math.random()<.06)p2.v+=rn(.01,.05)*pump;if(Math.random()<.06)p2.v-=rn(.01,.05)*dump;
-      if(prog>.6)p2.v+=rn(0,.015);p2.v*=.9;p2.y+=p2.v;p2.y=Math.max(0,Math.min(cap,p2.y));p2.h=Math.max(p2.h,p2.y);
-      if(gt>=10){win=p1.y>p2.y?1:2;if(win===1){p1.y=tp;p1.h=tp}else{p2.y=tp;p2.h=tp};gs='done';
-        setTimeout(function(){initGame()},1500)}
-    }
-
-    function dC(x1,pl,col){var base=pad+gH,top=pad+gH*(1-pl.y),wTop=pad+gH*(1-pl.h);
-      cx.strokeStyle=col;cx.lineWidth=1.5;cx.beginPath();cx.moveTo(x1,wTop);cx.lineTo(x1,base);cx.stroke();
-      cx.fillStyle=col;cx.fillRect(x1-cW/2,top,cW,base-top);
-      cx.save();cx.shadowColor=col;cx.shadowBlur=10;cx.fillRect(x1-cW/2,top,cW,Math.min(base-top,2));cx.restore();
-      cx.fillStyle='rgba(255,255,255,.05)';cx.fillRect(x1-cW/2+2,top+1,cW*.3,base-top-2)}
-    dC(cx1,p1,'#CEE200');dC(cx2,p2,'#8B5CF6');
-    requestAnimationFrame(draw)}
-
-  initGame();draw();
-})();
-</script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 353 353'%3E%3Crect width='353' height='353' rx='176' fill='%23FF5A1F'/%3E%3Cpath fill='%23fff' d='M97.86 194.71c-8.53-2.28-13.6-11.05-11.32-19.58l20.64-77.24c2.29-8.53 11.05-13.6 19.58-11.32s13.6 11.04 11.32 19.58l-20.65 77.24c-2.28 8.53-11.04 13.6-19.57 11.32ZM135.51 216.42c-6.25-6.24-6.26-16.37-.02-22.61l56.5-56.57c6.24-6.25 16.36-6.26 22.61 0 6.25 6.24 6.26 16.36 0 22.61l-56.5 56.57c-6.24 6.25-16.37 6.26-22.61 0ZM254.07 244.59l-77.22 20.74c-8.53 2.29-17.3-2.77-19.6-11.29-2.29-8.53 2.77-17.3 11.3-19.59l77.22-20.74c8.53-2.29 17.3 2.77 19.6 11.29 2.29 8.53-2.77 17.3-11.3 19.59Z'/%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <meta name="theme-color" content="#000000" />
+    <title>Signal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #root { height: 100%; background: #0A0A0A; color: #F5F5F5; }
+      body {
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-feature-settings: 'ss01', 'ss02', 'cv11';
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #404040; }
+      button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+      input { font-family: inherit; color: inherit; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
