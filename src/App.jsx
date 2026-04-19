@@ -30,6 +30,12 @@ const fmtUptime = (s) => {
   if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h`
   return h ? `${h}h ${m}m` : `${m}m`
 }
+const mlToProb = (ml) => {
+  if (!ml) return null
+  const n = Number(ml)
+  if (!n) return null
+  return n > 0 ? 100 / (n + 100) : Math.abs(n) / (Math.abs(n) + 100)
+}
 
 const SPORT_LABEL = {
   nba: 'NBA', wnba: 'WNBA', nhl: 'NHL', mlb: 'MLB', nfl: 'NFL',
@@ -38,14 +44,14 @@ const SPORT_LABEL = {
   ucl: 'UCL', uel: 'UEL', uecl: 'UECL',
   champ: 'Championship', jleag: 'J-League', j2: 'J2',
   aleag: 'A-League', braA: 'Brazil A', braB: 'Brazil B',
-  kleag: 'K-League', china: 'CSL', turk: 'Süper Lig',
+  kleag: 'K-League', china: 'CSL', turk: 'Süper Lig', tur: 'Süper Lig',
   norw: 'Eliteserien', denm: 'Superliga', colom: 'Colombia', egypt: 'Egypt',
   libert: 'Libertadores', sudam: 'Sudamericana', saudi: 'Saudi', ligamx: 'Liga MX',
-  erediv: 'Eredivisie', liga2: 'La Liga 2', lig2fr: 'Ligue 2', bund2: '2. Bundesliga',
+  erediv: 'Eredivisie', erediv2: 'Eerste', liga2: 'La Liga 2', lig2fr: 'Ligue 2', bund2: '2. Bundesliga',
   serieb: 'Serie B', porto: 'Primeira', argA: 'Argentina',
+  allsv: 'Allsvenskan', ekstra: 'Ekstraklasa',
 }
 
-// ───── Signal logo mark ─────
 const SignalMark = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 353 353" fill="currentColor">
     <path d="M97.86,194.71c-8.53-2.28-13.6-11.05-11.32-19.58l20.64-77.24c2.29-8.53,11.05-13.6,19.58-11.32s13.6,11.04,11.32,19.58l-20.65,77.24c-2.28,8.53-11.04,13.6-19.57,11.32Z"/>
@@ -54,16 +60,15 @@ const SignalMark = ({ size = 20 }) => (
   </svg>
 )
 
-// ───── Icons ─────
 const I = {
   dash: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
   positions: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17 L9 11 L13 15 L21 7"/><path d="M14 7 H21 V14"/></svg>,
   ledger: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10 H21"/><path d="M9 4 V20"/></svg>,
-  live: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>,
+  pulse: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12 H7 L9 6 L13 18 L15 12 H21"/></svg>,
+  scan: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4 H9 M4 4 V9 M20 4 H15 M20 4 V9 M4 20 H9 M4 20 V15 M20 20 H15 M20 20 V15"/><circle cx="12" cy="12" r="3"/></svg>,
   analytics: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20 V10"/><path d="M10 20 V4"/><path d="M16 20 V13"/><path d="M22 20 V7"/></svg>,
   menu: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>,
   x: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg>,
-  arrow: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12 H19"/><path d="M13 6 L19 12 L13 18"/></svg>,
 }
 
 // ───── Data hooks ─────
@@ -97,12 +102,10 @@ function useStats(state) {
     const unrealized = state.unrealized_pnl || 0
     const open = state.open_positions || []
     const trades = state.trade_history || []
-    const live = state.live_games || []
     const wins = trades.filter(t => (t.pnl || 0) > 0).length
     const winRate = trades.length ? wins / trades.length : 0
     const deployed = open.reduce((s, p) => s + (p.cost || 0), 0)
-    const exposure = deployed / starting
-    // per-sport breakdown
+    const exposure = deployed / Math.max(equity, 1)
     const bySport = {}
     for (const t of trades) {
       const s = t.sport || 'other'
@@ -111,23 +114,22 @@ function useStats(state) {
       if ((t.pnl || 0) > 0) bySport[s].wins += 1
       bySport[s].pnl += (t.pnl || 0)
     }
-    // per-engine
-    const harvest = trades.filter(t => t.engine === 'harvest')
-    const edge = trades.filter(t => t.engine === 'edge')
-    const harvestPnl = harvest.reduce((s, t) => s + (t.pnl || 0), 0)
-    const edgePnl = edge.reduce((s, t) => s + (t.pnl || 0), 0)
-    const harvestOpen = open.filter(p => p.engine === 'harvest')
-    const edgeOpen = open.filter(p => p.engine === 'edge')
+    const clvTrades = trades.filter(t => t.clv_edge != null)
+    const avgClv = clvTrades.length ? clvTrades.reduce((s, t) => s + (t.clv_edge || 0), 0) / clvTrades.length : null
+    const beatClose = clvTrades.length ? clvTrades.filter(t => (t.clv_edge || 0) > 0).length / clvTrades.length : null
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+    const dayStartTs = dayStart.getTime() / 1000
+    const todayTrades = trades.filter(t => (t.closed_at || 0) >= dayStartTs)
+    const todayPnl = todayTrades.reduce((s, t) => s + (t.pnl || 0), 0)
     return {
-      equity, starting, pct, realized, unrealized, open, trades, live,
+      equity, starting, pct, realized, unrealized, open, trades,
       winRate, deployed, exposure, bySport,
-      harvest: { trades: harvest, open: harvestOpen, pnl: harvestPnl, winRate: harvest.length ? harvest.filter(t=>(t.pnl||0)>0).length/harvest.length : 0 },
-      edge: { trades: edge, open: edgeOpen, pnl: edgePnl, winRate: edge.length ? edge.filter(t=>(t.pnl||0)>0).length/edge.length : 0 },
+      clvTrades, avgClv, beatClose,
+      todayPnl, todayTrades: todayTrades.length,
     }
   }, [state])
 }
 
-// Build equity curve (from state.equity_curve or synthesized from trades)
 function useEquityCurve(state, stats) {
   return useMemo(() => {
     if (!state || !stats) return []
@@ -150,22 +152,21 @@ function useEquityCurve(state, stats) {
   }, [state, stats])
 }
 
-// ───── Main App ─────
 export default function App() {
   const { state, err } = useBotState()
   const stats = useStats(state)
   const [section, setSection] = useState('overview')
   const [navOpen, setNavOpen] = useState(false)
-  const [modal, setModal] = useState(null) // {type: 'close-all'|'close-one', id?}
+  const [modal, setModal] = useState(null)
+
   const sectionRefs = {
     overview: useRef(null), positions: useRef(null), ledger: useRef(null),
-    live: useRef(null), analytics: useRef(null), harvest: useRef(null), edge: useRef(null),
+    edges: useRef(null), scans: useRef(null), analytics: useRef(null),
   }
   const scroller = useRef(null)
 
   const goTo = (id) => {
-    setSection(id)
-    setNavOpen(false)
+    setSection(id); setNavOpen(false)
     const el = sectionRefs[id]?.current
     if (el && scroller.current) {
       scroller.current.scrollTo({ top: el.offsetTop - 16, behavior: 'smooth' })
@@ -182,12 +183,11 @@ export default function App() {
         <button className="mobile-menu" onClick={() => setNavOpen(true)}><I.menu /></button>
         <div className="content" ref={scroller}>
           <section ref={sectionRefs.overview}>
-            <HeroRow stats={stats} state={state} onCloseAll={() => setModal({ type: 'close-all' })} onGo={goTo} />
+            <HeroRow stats={stats} state={state} onCloseAll={() => setModal({ type: 'close-all' })} />
           </section>
 
-          <section ref={sectionRefs.live} className="section">
-            <h2 className="section-title">Live <span className="count">{stats.live.length}</span></h2>
-            <LivePanel games={stats.live} />
+          <section className="section">
+            <EdgeFlowBar state={state} />
           </section>
 
           <section ref={sectionRefs.positions} className="section">
@@ -200,14 +200,19 @@ export default function App() {
             <ExposureCard stats={stats} />
           </div>
 
-          <section ref={sectionRefs.harvest} className="section grid-2">
-            <EngineCard engine="harvest" stats={stats.harvest} state={state} lastScan={state.last_harvest_scan} />
-            <EngineCard engine="edge" stats={stats.edge} state={state} lastScan={state.last_edge_scan} />
+          <section ref={sectionRefs.edges} className="section">
+            <h2 className="section-title">Live edges <span className="count">{(state.edges_found || []).length}</span></h2>
+            <LiveEdgesTable edges={state.edges_found || []} open={stats.open} />
+          </section>
+
+          <section ref={sectionRefs.scans} className="section">
+            <h2 className="section-title">Scan activity</h2>
+            <ScanActivity />
           </section>
 
           <section className="section">
-            <h2 className="section-title">Scan activity <span className="count">{(state.scan_history_summary || []).length}</span></h2>
-            <ScanActivity />
+            <h2 className="section-title">Closing line value <span className="sub-title">— proves real alpha</span></h2>
+            <CLVPanel stats={stats} />
           </section>
 
           <section ref={sectionRefs.analytics} className="section">
@@ -215,24 +220,14 @@ export default function App() {
             <SportBreakdown bySport={stats.bySport} />
           </section>
 
-          <section className="section">
-            <h2 className="section-title">Confidence vs outcome</h2>
-            <CalibrationChart trades={stats.trades} />
-          </section>
-
-          <section className="section">
-            <h2 className="section-title">Edge heatmap</h2>
-            <EdgeHeatmap edges={state.edges_found || []} />
-          </section>
-
           <section ref={sectionRefs.ledger} className="section">
             <h2 className="section-title">Recent trades <span className="count">{stats.trades.length}</span></h2>
-            <LedgerTable trades={stats.trades.slice().sort((a,b) => (b.closed_at||0)-(a.closed_at||0)).slice(0,20)} />
+            <LedgerTable trades={stats.trades.slice().sort((a,b) => (b.closed_at||0)-(a.closed_at||0)).slice(0,30)} />
           </section>
 
           <div className="footer">
             <div>Signal · {state.paper_mode ? 'Paper' : 'Live'} · Uptime {fmtUptime(state.uptime)}</div>
-            <div className="footer-dim">Auto-refresh every {POLL_MS/1000}s</div>
+            <div className="footer-dim">Auto-refresh {POLL_MS/1000}s · Edge-only</div>
           </div>
         </div>
       </main>
@@ -241,13 +236,13 @@ export default function App() {
   )
 }
 
-// ───── Sidebar ─────
 function Sidebar({ active, onNav, stats, state, open, onClose }) {
   const items = [
     { id: 'overview', label: 'Overview', icon: I.dash },
-    { id: 'live', label: 'Live', icon: I.live, badge: stats.live.length },
     { id: 'positions', label: 'Positions', icon: I.positions, badge: stats.open.length },
-    { id: 'harvest', label: 'Engines', icon: I.analytics },
+    { id: 'edges', label: 'Edges', icon: I.pulse, badge: (state.edges_found || []).length },
+    { id: 'scans', label: 'Scans', icon: I.scan },
+    { id: 'analytics', label: 'Analytics', icon: I.analytics },
     { id: 'ledger', label: 'Ledger', icon: I.ledger, badge: stats.trades.length },
   ]
   return (
@@ -262,7 +257,7 @@ function Sidebar({ active, onNav, stats, state, open, onClose }) {
         <nav className="nav">
           {items.map(it => {
             const IconComp = it.icon
-            const isActive = active === it.id || (it.id === 'harvest' && active === 'edge')
+            const isActive = active === it.id
             return (
               <button key={it.id} className={`nav-item ${isActive ? 'active' : ''}`} onClick={() => onNav(it.id)}>
                 <IconComp />
@@ -280,7 +275,7 @@ function Sidebar({ active, onNav, stats, state, open, onClose }) {
 }
 
 function StatusMini({ state }) {
-  const ok = state.ws_market_connected && state.ws_sports_connected && state.redis_connected
+  const ok = state.ws_market_connected && state.redis_connected
   return (
     <div className="status-mini">
       <span className={`dot ${ok ? 'ok' : 'warn'}`} />
@@ -290,131 +285,72 @@ function StatusMini({ state }) {
   )
 }
 
-// ───── Hero row: equity, realized, exposure ─────
-function HeroRow({ stats, state, onCloseAll, onGo }) {
+function HeroRow({ stats, state, onCloseAll }) {
+  const dayUp = stats.todayPnl >= 0
+  const totUp = stats.pct >= 0
+  const clv = stats.avgClv
   return (
-    <div className="hero-row">
+    <div className="hero-row hero-row-4">
       <div className="hero hero-featured">
-        <div className="hero-head">
-          <SignalMark size={14} />
-          <span>Equity</span>
-        </div>
+        <div className="hero-head"><SignalMark size={14} /><span>Equity</span></div>
         <div className="hero-big mono">{fmtUSD(stats.equity, 2)}</div>
-        <div className="hero-foot">
-          <span className={`pill ${stats.pct >= 0 ? 'p-up' : 'p-down'}`}>
-            {fmtSignedPct(stats.pct)}
-          </span>
-          <span className="hero-dim">start {fmtUSD(stats.starting, 0)}</span>
-        </div>
-      </div>
-
-      <div className="hero" onClick={() => onGo('ledger')} role="button">
-        <div className="hero-head"><span>Realized</span></div>
-        <div className="hero-big mono">{fmtSigned(stats.realized)}</div>
-        <div className="hero-foot">
-          <span className="hero-dim">{stats.trades.length} trades · {fmtPct(stats.winRate)} win</span>
+        <div className={`hero-sub ${totUp ? 'p-up' : 'p-down'}`}>
+          {fmtSignedPct(stats.pct)} · {fmtSigned(stats.realized + stats.unrealized)}
         </div>
       </div>
 
       <div className="hero">
-        <div className="hero-head"><span>Deployed</span></div>
-        <div className="hero-big mono">{fmtUSD(stats.deployed, 0)}</div>
-        <div className="exposure-bar"><div className="exposure-fill" style={{ width: `${Math.min(100, stats.exposure * 100)}%` }} /></div>
-        <div className="hero-foot">
-          <span className="hero-dim">{stats.open.length} open · {fmtPct(stats.exposure)} of cap</span>
-          {stats.open.length > 0 && <button className="hero-action" onClick={(e) => { e.stopPropagation(); onCloseAll() }}>Close all</button>}
+        <div className="hero-head"><span>Today</span></div>
+        <div className={`hero-mid mono ${dayUp ? 'p-up' : 'p-down'}`}>{fmtSigned(stats.todayPnl)}</div>
+        <div className="hero-sub dim">{stats.todayTrades} trades</div>
+      </div>
+
+      <div className="hero">
+        <div className="hero-head"><span>Avg CLV</span></div>
+        <div className={`hero-mid mono ${clv == null ? 'dim' : clv >= 0 ? 'p-up' : 'p-down'}`}>
+          {clv == null ? '—' : `${clv >= 0 ? '+' : ''}${(clv * 100).toFixed(2)}¢`}
+        </div>
+        <div className="hero-sub dim">
+          {stats.beatClose == null ? 'no data' : `${Math.round(stats.beatClose * 100)}% beat close`}
+          {stats.clvTrades.length > 0 && <span className="dim"> · {stats.clvTrades.length}</span>}
         </div>
       </div>
-    </div>
-  )
-}
 
-// ───── Live games panel ─────
-function LivePanel({ games }) {
-  if (!games.length) return <div className="empty small">No live games</div>
-  return (
-    <div className="live-list">
-      {games.map(g => <LiveRow key={g.espn_id} g={g} />)}
-    </div>
-  )
-}
-
-function LiveRow({ g }) {
-  const leadHome = (g.home_score || 0) - (g.away_score || 0)
-  const h = g.home_poly, a = g.away_poly
-  // Match the bot's actual blowout thresholds per sport × elapsed
-  const blowout = isBlowout(g)
-  return (
-    <div className={`live-row ${blowout ? 'blowout' : ''}`}>
-      <div className="live-league">{SPORT_LABEL[g.sport] || g.sport}</div>
-      <div className="live-matchup">
-        <div className={`ln ${leadHome < 0 ? 'lead' : ''}`}><span className="tm">{g.away_abbrev}</span><span className="sc mono">{g.away_score ?? 0}</span></div>
-        <div className={`ln ${leadHome > 0 ? 'lead' : ''}`}><span className="tm">{g.home_abbrev}</span><span className="sc mono">{g.home_score ?? 0}</span></div>
+      <div className="hero">
+        <div className="hero-head">
+          <span>Deployed</span>
+          {stats.open.length > 0 && <button className="hero-btn" onClick={onCloseAll}>Close all</button>}
+        </div>
+        <div className="hero-mid mono">{fmtUSD(stats.deployed, 0)}</div>
+        <div className="exposure-bar">
+          <div className="exposure-fill" style={{ width: `${Math.min(100, stats.exposure * 100)}%` }} />
+        </div>
+        <div className="hero-sub dim">{fmtPct(stats.exposure)} · {stats.open.length} positions</div>
       </div>
-      <div className="live-clock mono">{g.detail || '—'}</div>
-      <div className="live-prices mono">
-        {h != null ? `${(h*100).toFixed(0)}¢` : '—'}
-        <span className="sep">·</span>
-        {a != null ? `${(a*100).toFixed(0)}¢` : '—'}
-      </div>
-      <div className="live-spacer" />
-      <div className="live-tag">{blowout ? <span className="tag tag-orange">blowout</span> : <span className="tag-mute">·</span>}</div>
     </div>
   )
 }
 
-// Approximate the bot's blowout logic so badge is accurate
-function isBlowout(g) {
-  const lead = Math.abs((g.home_score || 0) - (g.away_score || 0))
-  const detail = (g.detail || '').toLowerCase()
-  const sport = g.sport
-  // MLB: inning-based. We need big leads late.
-  if (sport === 'mlb') {
-    // Extract inning number
-    const m = detail.match(/(\d+)(st|nd|rd|th)/)
-    const inning = m ? parseInt(m[1]) : 0
-    const late = inning >= 7 || detail.includes('end')
-    const midLate = inning >= 6
-    if (lead >= 7) return true
-    if (lead >= 5 && midLate) return true
-    if (lead >= 4 && late) return true
-    if (lead >= 3 && (detail.includes('9th') || detail.includes('end'))) return true
-    return false
-  }
-  // NBA/WNBA: quarter-based
-  if (sport === 'nba' || sport === 'wnba' || sport === 'ncaab') {
-    const q4 = detail.includes('4th') || detail.includes('ot')
-    const q3 = detail.includes('3rd')
-    if (lead >= 30 && q3) return true
-    if (lead >= 25 && q4) return true
-    if (lead >= 20 && q4 && detail.match(/[0-5]:\d\d/)) return true  // last 6 min
-    return false
-  }
-  // NHL: period-based
-  if (sport === 'nhl') {
-    const p3 = detail.includes('3rd')
-    if (lead >= 4 && p3) return true
-    if (lead >= 5) return true
-    return false
-  }
-  // NFL / NCAAF
-  if (sport === 'nfl' || sport === 'ncaaf') {
-    const q4 = detail.includes('4th')
-    if (lead >= 21 && q4) return true
-    if (lead >= 28) return true
-    return false
-  }
-  // Soccer: minute-based, harder to blowout reliably
-  const m = detail.match(/(\d+)'/)
-  const minute = m ? parseInt(m[1]) : 0
-  if (lead >= 3 && minute >= 75) return true
-  if (lead >= 4 && minute >= 60) return true
-  return false
+function EdgeFlowBar({ state }) {
+  const odds = state.odds_source_counts || {}
+  const diag = state.edge_scan_diag || {}
+  const lastScan = state.last_edge_scan
+  const lastAgo = lastScan ? Math.floor(Date.now()/1000 - lastScan) : null
+  const nextIn = lastScan ? Math.max(0, 120 - lastAgo) : null
+  return (
+    <div className="edge-flow">
+      <div className="ef-item"><div className="ef-val mono">{(odds.oddsapi_sports || []).length}</div><div className="ef-lbl">leagues</div></div>
+      <div className="ef-item"><div className="ef-val mono">{odds.total || 0}</div><div className="ef-lbl">odds</div></div>
+      <div className="ef-item"><div className="ef-val mono">{diag.sides_evaluated || 0}</div><div className="ef-lbl">evaluated</div></div>
+      <div className="ef-item"><div className={`ef-val mono ${(diag.signals_generated || 0) > 0 ? 'p-up' : 'dim'}`}>{diag.signals_generated || 0}</div><div className="ef-lbl">signals</div></div>
+      <div className="ef-item"><div className="ef-val mono">{lastAgo != null ? `${lastAgo}s` : '—'}</div><div className="ef-lbl">last scan</div></div>
+      <div className="ef-item"><div className="ef-val mono">{nextIn != null ? `${nextIn}s` : '—'}</div><div className="ef-lbl">next in</div></div>
+    </div>
+  )
 }
 
-// ───── Positions list ─────
 function PositionsList({ positions, onClose }) {
-  if (!positions.length) return <div className="empty small">No open positions</div>
+  if (!positions.length) return <div className="empty small">No open positions — bot is scanning for edges</div>
   return (
     <div className="pos-list">
       <div className="pos-head">
@@ -434,19 +370,17 @@ function PositionsList({ positions, onClose }) {
             <div className="pos-main">
               <div className="pos-team">{p.team}</div>
               <div className="pos-meta">
-                <span className={`tag tag-${p.engine}`}>{p.engine}</span>
+                <span className="tag tag-edge">edge</span>
                 <span className="pos-sport">{SPORT_LABEL[p.sport] || p.sport}</span>
               </div>
             </div>
             <div className="pos-book mono">
-              {p.engine === 'edge' && p.book_prob != null ? (
+              {p.book_prob != null ? (
                 <>
                   <span className="pos-book-label">{p.provider || 'book'}</span>
                   <span>{(p.book_prob * 100).toFixed(0)}¢</span>
                 </>
-              ) : (
-                <span className="dim">—</span>
-              )}
+              ) : (<span className="dim">—</span>)}
             </div>
             <div className="pos-prices mono">
               <span className="dim">{fmtCents(p.entry_price)}</span>
@@ -455,7 +389,7 @@ function PositionsList({ positions, onClose }) {
             </div>
             <div className="pos-cost mono dim">{fmtUSD(p.cost, 0)}</div>
             <div className={`pos-pnl mono ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(pnl)}</div>
-            <button className="pos-close" onClick={() => onClose(p.id)}><I.x /></button>
+            <button className="pos-close" onClick={() => onClose(p.id)} title="Close position"><I.x /></button>
           </div>
         )
       })}
@@ -463,7 +397,6 @@ function PositionsList({ positions, onClose }) {
   )
 }
 
-// ───── Equity card with animated live chart ─────
 function EquityCard({ state, stats }) {
   const curve = useEquityCurve(state, stats)
   const [range, setRange] = useState('all')
@@ -476,16 +409,11 @@ function EquityCard({ state, stats }) {
     <div className="card">
       <div className="card-head">
         <h2 className="section-title flat">Equity</h2>
-        <div className="seg">
+        <div className="range-btns">
           {['1h', '24h', '7d', 'all'].map(r => (
-            <button key={r} className={range === r ? 'on' : ''} onClick={() => setRange(r)}>{r}</button>
+            <button key={r} className={`range-btn ${range === r ? 'active' : ''}`} onClick={() => setRange(r)}>{r}</button>
           ))}
         </div>
-      </div>
-      <div className="equity-hero mono">{fmtUSD(stats.equity, 2)}</div>
-      <div className="equity-delta">
-        <span className={`pill ${stats.pct >= 0 ? 'p-up' : 'p-down'}`}>{fmtSignedPct(stats.pct)}</span>
-        <span className="dim">{fmtSigned(stats.equity - stats.starting)} since start</span>
       </div>
       <LiveChart points={filtered} starting={stats.starting} />
     </div>
@@ -494,329 +422,150 @@ function EquityCard({ state, stats }) {
 
 function LiveChart({ points, starting }) {
   const [hover, setHover] = useState(null)
-  const wrapRef = useRef(null)
-  if (!points.length) return <div className="chart-empty">Waiting for data</div>
-  const W = 600, H = 180, P = 24
-  const xs = points.map(p => p.ts)
-  const ys = points.map(p => p.equity)
-  const xMin = Math.min(...xs), xMax = Math.max(...xs)
-  const yMin = Math.min(...ys, starting)
-  const yMax = Math.max(...ys, starting)
-  const yRange = Math.max(1, yMax - yMin) * 1.15
-  const yCenter = (yMin + yMax) / 2
-  const yTop = yCenter + yRange / 2
-  const yBot = yCenter - yRange / 2
-  const px = t => P + ((t - xMin) / Math.max(1, xMax - xMin)) * (W - P * 2)
-  const py = e => H - P - ((e - yBot) / (yTop - yBot)) * (H - P * 2)
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${px(p.ts).toFixed(1)},${py(p.equity).toFixed(1)}`).join(' ')
-  const fillPath = `${path} L${px(xMax).toFixed(1)},${H-P} L${px(xMin).toFixed(1)},${H-P} Z`
-  const last = points[points.length - 1]
+  const ref = useRef(null)
+  const W = 640, H = 180
+  const padL = 48, padR = 10, padT = 10, padB = 22
+  const plotW = W - padL - padR, plotH = H - padT - padB
+
+  const { path, pts, min, max } = useMemo(() => {
+    if (!points.length) return { path: '', pts: [], min: 0, max: 0 }
+    const vals = points.map(p => p.equity)
+    let min = Math.min(starting, ...vals)
+    let max = Math.max(starting, ...vals)
+    const r = max - min || 1
+    min -= r * 0.05; max += r * 0.05
+    const tMin = points[0].ts, tMax = points[points.length - 1].ts
+    const dt = tMax - tMin || 1
+    const xs = points.map(p => padL + ((p.ts - tMin) / dt) * plotW)
+    const ys = points.map(p => padT + (1 - (p.equity - min) / (max - min)) * plotH)
+    const path = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+    const pts = points.map((p, i) => ({ ...p, x: xs[i], y: ys[i] }))
+    return { path, pts, min, max }
+  }, [points, starting])
+
   const onMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect()
+    if (!ref.current || !pts.length) return
+    const rect = ref.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * W
-    let best = points[0], bestDist = Infinity
-    for (const p of points) {
-      const d = Math.abs(px(p.ts) - x)
-      if (d < bestDist) { bestDist = d; best = p }
+    let best = 0, bd = Infinity
+    for (let i = 0; i < pts.length; i++) {
+      const d = Math.abs(pts[i].x - x)
+      if (d < bd) { bd = d; best = i }
     }
-    setHover(best)
+    setHover(pts[best])
   }
+
+  const lineSY = padT + (1 - (starting - min) / (max - min)) * plotH
+  const last = pts[pts.length - 1]
+  const up = last && last.equity >= starting
+
   return (
-    <div className="chart-wrap" ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="chart">
-        <defs>
-          <linearGradient id="ef" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#FF5A1F" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#FF5A1F" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* starting line */}
-        <line x1={P} y1={py(starting)} x2={W-P} y2={py(starting)} stroke="#262626" strokeDasharray="3 4" />
-        {/* fill */}
-        <path d={fillPath} fill="url(#ef)" />
-        {/* line */}
-        <path d={path} fill="none" stroke="#FF5A1F" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {/* last pulse */}
-        <circle cx={px(last.ts)} cy={py(last.equity)} r="3.5" fill="#FF5A1F" />
-        <circle cx={px(last.ts)} cy={py(last.equity)} r="7" fill="#FF5A1F" opacity="0.35" className="pulse-ring" />
-        {/* hover line */}
-        {hover && <>
-          <line x1={px(hover.ts)} y1={P} x2={px(hover.ts)} y2={H-P} stroke="#404040" strokeDasharray="2 3" />
-          <circle cx={px(hover.ts)} cy={py(hover.equity)} r="4" fill="#FF5A1F" stroke="#000" strokeWidth="2" />
-        </>}
+    <div className="chart-wrap">
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="chart" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        <line x1={padL} x2={W - padR} y1={lineSY} y2={lineSY} className="base-line" strokeDasharray="3 3" />
+        <text x={padL - 6} y={lineSY + 3} textAnchor="end" className="chart-label">{fmtUSD(starting, 0)}</text>
+        {path && <path d={path} className={`chart-line ${up ? 'up' : 'down'}`} />}
+        {last && (
+          <>
+            <circle cx={last.x} cy={last.y} r="9" className={`pulse-ring ${up ? 'up' : 'down'}`} />
+            <circle cx={last.x} cy={last.y} r="5" className={`pulse-ring-2 ${up ? 'up' : 'down'}`} />
+            <circle cx={last.x} cy={last.y} r="3" className={`pulse-dot ${up ? 'up' : 'down'}`} />
+          </>
+        )}
+        {hover && (
+          <>
+            <line x1={hover.x} x2={hover.x} y1={padT} y2={H - padB} className="hover-line" />
+            <circle cx={hover.x} cy={hover.y} r="4" className="hover-dot" />
+          </>
+        )}
       </svg>
       {hover && (
-        <div className="chart-tip" style={{ left: `${(px(hover.ts) / W) * 100}%` }}>
-          <div className="tip-val mono">{fmtUSD(hover.equity)}</div>
-          <div className="tip-ago">{new Date(hover.ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div className="chart-tooltip" style={{ left: `${(hover.x / W) * 100}%` }}>
+          <div className="tt-val mono">{fmtUSD(hover.equity)}</div>
+          <div className="tt-sub">{fmtAgo(hover.ts)} ago</div>
         </div>
       )}
     </div>
   )
 }
 
-// ───── Exposure card (visualized as horizontal stacked bar) ─────
 function ExposureCard({ stats }) {
-  const byEngine = {}
-  for (const p of stats.open) {
-    const k = p.engine || 'other'
-    byEngine[k] = (byEngine[k] || 0) + (p.cost || 0)
-  }
-  const cap = stats.starting * 0.6
-  const entries = Object.entries(byEngine).sort((a,b) => b[1]-a[1])
+  const available = Math.max(0, 1 - stats.exposure)
   return (
     <div className="card">
-      <div className="card-head">
-        <h2 className="section-title flat">Exposure</h2>
-        <span className="dim mono">{fmtPct(stats.exposure)} / 60%</span>
+      <div className="card-head"><h2 className="section-title flat">Exposure</h2></div>
+      <div className="exp-big mono">{fmtPct(stats.exposure, 0)}</div>
+      <div className="exp-bar">
+        <div className="exp-seg exp-edge" style={{ flex: stats.exposure }} title={`Deployed ${fmtUSD(stats.deployed, 0)}`} />
+        <div className="exp-seg exp-avail" style={{ flex: available }} title={`Available ${fmtUSD(stats.equity - stats.deployed, 0)}`} />
       </div>
-      <div className="equity-hero mono">{fmtUSD(stats.deployed, 0)} <span className="cap-of">of {fmtUSD(cap, 0)}</span></div>
-      <div className="exposure-bar big">
-        {entries.map(([eng, cost], i) => (
-          <div key={eng} className={`exposure-seg tag-${eng}`} style={{ width: `${(cost / stats.starting) * 100 / 0.6 * 100 / 100}%` }} title={`${eng}: ${fmtUSD(cost,0)}`} />
-        ))}
-      </div>
-      <div className="exposure-legend">
-        {entries.map(([eng, cost]) => (
-          <div key={eng} className="legend-item">
-            <span className={`legend-dot dot-${eng}`}></span>
-            <span className="legend-label">{eng}</span>
-            <span className="mono dim">{fmtUSD(cost, 0)}</span>
-          </div>
-        ))}
-        <div className="legend-item">
-          <span className="legend-dot dot-free"></span>
-          <span className="legend-label">available</span>
-          <span className="mono dim">{fmtUSD(Math.max(0, cap - stats.deployed), 0)}</span>
-        </div>
+      <div className="exp-legend">
+        <div className="leg-item"><span className="leg-dot leg-edge" /><span>Deployed</span><span className="mono dim">{fmtUSD(stats.deployed, 0)}</span></div>
+        <div className="leg-item"><span className="leg-dot leg-avail" /><span>Available</span><span className="mono dim">{fmtUSD(stats.equity - stats.deployed, 0)}</span></div>
       </div>
     </div>
   )
 }
 
-// ───── Engine tile (Harvest & Edge) ─────
-function EngineCard({ engine, stats, state, lastScan }) {
-  const title = engine === 'harvest' ? 'Harvest' : 'Edge'
-  const sub = engine === 'harvest' ? 'Live blowouts' : 'Pre-game edges'
-  // Small sparkline from engine's trades
-  const sortedTrades = useMemo(() => [...stats.trades].sort((a,b) => (a.closed_at||0)-(b.closed_at||0)), [stats.trades])
-  const sparkData = useMemo(() => {
-    let running = 0
-    return sortedTrades.map(t => { running += (t.pnl||0); return running })
-  }, [sortedTrades])
-  return (
-    <div className="card">
-      <div className="card-head">
-        <div>
-          <h2 className="section-title flat">{title}</h2>
-          <div className="dim small">{sub}</div>
-        </div>
-        <span className={`tag tag-${engine}`}>{engine}</span>
-      </div>
-      <div className="engine-stats">
-        <Stat label="P&L" value={fmtSigned(stats.pnl)} tone={stats.pnl >= 0 ? 'up' : 'down'} />
-        <Stat label="Trades" value={stats.trades.length} />
-        <Stat label="Win rate" value={fmtPct(stats.winRate)} />
-        <Stat label="Open" value={stats.open.length} />
-      </div>
-      <Sparkline values={sparkData} />
-      <div className="card-foot dim mono">last scan {fmtAgo(lastScan)}</div>
-    </div>
-  )
-}
+function LiveEdgesTable({ edges, open }) {
+  const [sort, setSort] = useState('edge')
+  const openKeys = useMemo(() => new Set(open.map(p => (p.team || '').toLowerCase())), [open])
 
-function Stat({ label, value, tone }) {
-  return (
-    <div className="stat">
-      <div className="stat-label">{label}</div>
-      <div className={`stat-val mono ${tone === 'up' ? 'p-up' : tone === 'down' ? 'p-down' : ''}`}>{value}</div>
-    </div>
-  )
-}
-
-function Sparkline({ values }) {
-  if (values.length < 2) return <div className="sparkline-empty" />
-  const W = 300, H = 40
-  const min = Math.min(0, ...values), max = Math.max(0, ...values)
-  const range = Math.max(1, max - min)
-  const path = values.map((v, i) => {
-    const x = (i / (values.length - 1)) * W
-    const y = H - ((v - min) / range) * H
-    return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
-  const zeroY = H - ((0 - min) / range) * H
-  const last = values[values.length - 1]
-  const up = last >= 0
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="sparkline" preserveAspectRatio="none">
-      <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="#262626" strokeDasharray="2 3" />
-      <path d={path} fill="none" stroke={up ? '#C8E66A' : '#F87171'} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-// ───── Sport breakdown: bar chart ─────
-function SportBreakdown({ bySport }) {
-  const rows = Object.entries(bySport).sort((a,b) => Math.abs(b[1].pnl) - Math.abs(a[1].pnl))
-  if (!rows.length) return <div className="empty small">No closed trades yet</div>
-  const maxAbs = Math.max(...rows.map(r => Math.abs(r[1].pnl)))
-  return (
-    <div className="card">
-      <div className="sport-rows">
-        {rows.map(([sport, s]) => {
-          const pct = Math.abs(s.pnl) / maxAbs * 100
-          const up = s.pnl >= 0
-          return (
-            <div key={sport} className="sport-row">
-              <div className="sport-label">{SPORT_LABEL[sport] || sport}</div>
-              <div className="sport-trades mono dim">{s.trades}</div>
-              <div className="sport-wr mono dim">{fmtPct(s.wins / Math.max(1, s.trades))}</div>
-              <div className="sport-bar">
-                <div className={`sport-bar-fill ${up ? 'up' : 'down'}`} style={{ width: `${pct}%` }} />
-              </div>
-              <div className={`sport-pnl mono ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(s.pnl)}</div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ───── Calibration chart ─────
-function CalibrationChart({ trades }) {
-  const buckets = useMemo(() => {
-    const b = []
-    for (let i = 0; i < 10; i++) b.push({ low: i/10, high: (i+1)/10, wins: 0, total: 0, avgConf: 0 })
-    for (const t of trades) {
-      const c = t.confidence ?? t.true_prob
-      if (c == null) continue
-      const idx = Math.min(9, Math.floor(c * 10))
-      b[idx].total += 1
-      b[idx].avgConf += c
-      if ((t.pnl || 0) > 0) b[idx].wins += 1
-    }
-    return b.map(x => ({ ...x, avgConf: x.total ? x.avgConf/x.total : (x.low+x.high)/2, wr: x.total ? x.wins/x.total : null }))
-  }, [trades])
-  const withData = buckets.filter(b => b.total > 0)
-  if (!withData.length) return <div className="card"><div className="empty small">No confidence data yet</div></div>
-  // Compute overall calibration score
-  const totalTrades = withData.reduce((s, b) => s + b.total, 0)
-  const weightedDrift = withData.reduce((s, b) => s + b.total * Math.abs(b.wr - b.avgConf), 0) / totalTrades
-  const calibScore = Math.max(0, 1 - weightedDrift * 2) // 0 = worst, 1 = perfect
-  // SVG: use 1:1 aspect square chart region so circles render properly
-  const SIZE = 400, P = 32
-  const inner = SIZE - P * 2
-  return (
-    <div className="card calib-card">
-      <div className="calib-layout">
-        <div className="calib-chart">
-          <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="chart-square">
-            <defs>
-              <radialGradient id="dot-grad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#FF7B3F" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#FF5A1F" stopOpacity="0.3" />
-              </radialGradient>
-            </defs>
-            {/* grid — 5 major lines */}
-            {[0, 0.25, 0.5, 0.75, 1].map(v => (
-              <g key={v}>
-                <line x1={P + v*inner} y1={P} x2={P + v*inner} y2={SIZE-P} stroke="#1A1A1A" strokeWidth="1" />
-                <line x1={P} y1={SIZE-P - v*inner} x2={SIZE-P} y2={SIZE-P - v*inner} stroke="#1A1A1A" strokeWidth="1" />
-              </g>
-            ))}
-            {/* axis labels */}
-            {[0, 0.5, 1].map(v => (
-              <g key={`l${v}`}>
-                <text x={P + v*inner} y={SIZE-P+18} textAnchor="middle" fontSize="10" fill="#525252" fontFamily="JetBrains Mono">{(v*100).toFixed(0)}%</text>
-                <text x={P-8} y={SIZE-P - v*inner + 4} textAnchor="end" fontSize="10" fill="#525252" fontFamily="JetBrains Mono">{(v*100).toFixed(0)}%</text>
-              </g>
-            ))}
-            {/* axis titles */}
-            <text x={SIZE/2} y={SIZE-4} textAnchor="middle" fontSize="10" fill="#737373" letterSpacing="0.08em">MODEL CONFIDENCE</text>
-            <text x={8} y={SIZE/2} textAnchor="middle" fontSize="10" fill="#737373" transform={`rotate(-90 8 ${SIZE/2})`} letterSpacing="0.08em">ACTUAL WIN RATE</text>
-            {/* diagonal */}
-            <line x1={P} y1={SIZE-P} x2={SIZE-P} y2={P} stroke="#404040" strokeDasharray="4 5" strokeWidth="1" />
-            {/* data points */}
-            {buckets.map((b, i) => {
-              if (!b.total) return null
-              const cx = P + b.avgConf * inner
-              const cy = SIZE-P - b.wr * inner
-              // size scales with sample count — proper circles now since aspect is 1:1
-              const r = 4 + Math.min(16, Math.sqrt(b.total) * 2)
-              return (
-                <g key={i}>
-                  <circle cx={cx} cy={cy} r={r + 4} fill="#FF5A1F" fillOpacity="0.08" />
-                  <circle cx={cx} cy={cy} r={r} fill="url(#dot-grad)" stroke="#FF5A1F" strokeWidth="1.5" />
-                  <text x={cx} y={cy + 3} textAnchor="middle" fontSize="9" fill="white" fontWeight="600" fontFamily="JetBrains Mono">{b.total}</text>
-                </g>
-              )
-            })}
-          </svg>
-        </div>
-        <div className="calib-side">
-          <div className="calib-score">
-            <div className="calib-score-label">Calibration score</div>
-            <div className="calib-score-val mono">{(calibScore * 100).toFixed(0)}</div>
-            <div className="calib-score-bar">
-              <div className="calib-score-fill" style={{ width: `${calibScore * 100}%` }} />
-            </div>
-          </div>
-          <div className="calib-buckets">
-            {buckets.filter(b => b.total > 0).map((b, i) => (
-              <div key={i} className="calib-bucket-row">
-                <span className="mono dim">{(b.low*100).toFixed(0)}–{(b.high*100).toFixed(0)}</span>
-                <span className="mono">{b.total}</span>
-                <span className={`mono ${b.wr >= b.avgConf ? 'p-up' : 'p-down'}`}>{(b.wr*100).toFixed(0)}%</span>
-              </div>
-            ))}
-          </div>
-          <div className="calib-note dim small">
-            Circle size = sample count. Points above diagonal = model underconfident.
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ───── Edge heatmap (per-sport × edge magnitude) ─────
-function EdgeHeatmap({ edges }) {
-  // Aggregate: sport → avg edge
   const rows = useMemo(() => {
-    const m = {}
-    for (const e of edges) {
-      const s = e.sport
-      if (!m[s]) m[s] = { edges: [], count: 0 }
-      m[s].edges.push(e.edge || 0)
-      m[s].count += 1
-    }
-    return Object.entries(m).map(([sport, v]) => {
-      const avg = v.edges.reduce((a,b)=>a+b,0) / v.edges.length
-      const max = Math.max(...v.edges)
-      return { sport, avg, max, count: v.count }
-    }).sort((a,b) => b.max - a.max).slice(0, 18)
-  }, [edges])
-  if (!rows.length) return <div className="card"><div className="empty small">No edge data</div></div>
-  const maxAbs = Math.max(...rows.map(r => Math.abs(r.max))) || 0.1
+    const seen = new Set()
+    const list = (edges || []).filter(e => {
+      if (e.status === 'SKIP_NOT_BEST_SIDE') return false
+      const k = `${e.team}|${e.commence_time}`
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    if (sort === 'edge') list.sort((a, b) => (b.effective_edge ?? b.edge ?? 0) - (a.effective_edge ?? a.edge ?? 0))
+    else if (sort === 'time') list.sort((a, b) => (a.hours || 0) - (b.hours || 0))
+    else if (sort === 'sport') list.sort((a, b) => (a.sport || '').localeCompare(b.sport || ''))
+    return list.slice(0, 40)
+  }, [edges, sort])
+
+  if (!rows.length) return <div className="empty small">No live edges this scan. Bot checks every 2 min.</div>
+
   return (
-    <div className="card">
-      <div className="card-head small-head">
-        <div className="dim small">Largest edge detected per sport · {edges.length} signals evaluated</div>
+    <div className="edges-panel">
+      <div className="edges-sort">
+        <span className="dim">Sort:</span>
+        {['edge', 'time', 'sport'].map(s => (
+          <button key={s} className={`sort-btn ${sort === s ? 'active' : ''}`} onClick={() => setSort(s)}>{s}</button>
+        ))}
       </div>
-      <div className="heatmap">
-        {rows.map(r => {
-          const intensity = Math.min(1, Math.abs(r.max) / maxAbs)
-          const up = r.max >= 0
+      <div className="edges-table">
+        <div className="edges-head">
+          <div>Team</div>
+          <div>League</div>
+          <div className="r">Poly</div>
+          <div className="r">Book</div>
+          <div className="r">Edge</div>
+          <div className="r">Kickoff</div>
+          <div>Status</div>
+        </div>
+        {rows.map((e, i) => {
+          const bookProb = mlToProb(e.moneyline)
+          const ev = e.effective_edge ?? e.edge ?? 0
+          const isOpen = openKeys.has((e.team || '').toLowerCase())
           return (
-            <div key={r.sport} className="heat-cell" style={{
-              background: up
-                ? `rgba(255, 90, 31, ${0.12 + intensity * 0.55})`
-                : `rgba(248, 113, 113, ${0.10 + intensity * 0.45})`,
-            }}>
-              <div className="heat-label">{SPORT_LABEL[r.sport] || r.sport}</div>
-              <div className="heat-val mono">{fmtSignedPct(r.max, 1)}</div>
-              <div className="heat-count mono">{r.count}</div>
+            <div key={i} className={`edges-row ${e.status === 'TRADED' ? 'traded' : ''} ${isOpen ? 'is-open' : ''}`}>
+              <div className="f-team">
+                {isOpen && <span className="hold-dot" title="Currently held" />}
+                {e.team}
+              </div>
+              <div className="f-sport dim">{SPORT_LABEL[e.sport] || e.sport}</div>
+              <div className="r mono">{e.poly != null ? `${(e.poly * 100).toFixed(0)}¢` : '—'}</div>
+              <div className="r mono">{bookProb != null ? `${(bookProb * 100).toFixed(0)}¢` : '—'}</div>
+              <div className={`r mono ${ev >= 0.05 ? 'p-up' : ev >= 0.03 ? '' : 'dim'}`}>
+                {ev >= 0 ? '+' : ''}{(ev * 100).toFixed(1)}%
+              </div>
+              <div className="r mono dim">{e.hours != null ? `${e.hours.toFixed(1)}h` : '—'}</div>
+              <div className={`f-status ${statusTone(e.status)}`} title={e.reason || ''}>
+                {e.status || '—'}
+              </div>
             </div>
           )
         })}
@@ -825,180 +574,218 @@ function EdgeHeatmap({ edges }) {
   )
 }
 
-// ───── Ledger table ─────
-function LedgerTable({ trades }) {
-  if (!trades.length) return <div className="empty small">No trades yet</div>
+function CLVPanel({ stats }) {
+  const clv = stats.clvTrades
+  if (!clv.length) {
+    return (
+      <div className="card">
+        <div className="clv-empty">
+          <div className="clv-empty-title">Not enough data yet</div>
+          <div className="clv-empty-sub">CLV is recorded when a position pre-game exits. Wait for a few trades to resolve at T-30 min.</div>
+          <div className="clv-empty-sub dim">CLV = entry price vs closing bookmaker line. Positive = you beat the close = real alpha.</div>
+        </div>
+      </div>
+    )
+  }
+  const avg = stats.avgClv
+  const recent = [...clv].sort((a, b) => (b.closed_at || 0) - (a.closed_at || 0)).slice(0, 10)
+  const max = Math.max(...clv.map(t => Math.abs(t.clv_edge || 0))) || 0.01
+
   return (
-    <div className="ledger-wrap">
-      <table className="ledger">
-        <thead>
-          <tr>
-            <th>Team</th>
-            <th className="hide-sm">Market</th>
-            <th>Engine</th>
-            <th className="r hide-sm">Entry</th>
-            <th className="r hide-sm">Exit</th>
-            <th className="r">P&L</th>
-            <th className="hide-sm">When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map(t => {
-            const up = (t.pnl || 0) >= 0
-            return (
-              <tr key={t.id}>
-                <td className="bold">{t.team}</td>
-                <td className="dim hide-sm">{t.market_question || '—'}</td>
-                <td><span className={`tag tag-${t.engine}`}>{t.engine}</span></td>
-                <td className="r mono hide-sm">{fmtCents(t.entry_price)}</td>
-                <td className="r mono hide-sm">{fmtCents(t.exit_price)}</td>
-                <td className={`r mono ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(t.pnl)}</td>
-                <td className="dim hide-sm">{fmtAgo(t.closed_at)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="clv-panel">
+      <div className="clv-summary">
+        <div className="clv-stat">
+          <div className={`clv-stat-val mono ${avg >= 0 ? 'p-up' : 'p-down'}`}>
+            {avg >= 0 ? '+' : ''}{(avg * 100).toFixed(2)}¢
+          </div>
+          <div className="clv-stat-lbl">Avg CLV</div>
+        </div>
+        <div className="clv-stat">
+          <div className={`clv-stat-val mono ${stats.beatClose >= 0.5 ? 'p-up' : 'p-down'}`}>
+            {Math.round(stats.beatClose * 100)}%
+          </div>
+          <div className="clv-stat-lbl">Beat the close</div>
+        </div>
+        <div className="clv-stat">
+          <div className="clv-stat-val mono">{clv.length}</div>
+          <div className="clv-stat-lbl">Samples</div>
+        </div>
+      </div>
+
+      <div className="clv-table">
+        <div className="clv-head">
+          <div>Team</div>
+          <div>Provider</div>
+          <div className="r">Entry book</div>
+          <div className="r">Closing</div>
+          <div className="r">CLV edge</div>
+          <div className="r">P&L</div>
+          <div>Visual</div>
+        </div>
+        {recent.map((t, i) => {
+          const ce = t.clv_edge || 0
+          const entryProb = t.entry_book_prob || 0
+          const clvProb = t.clv_prob
+          return (
+            <div key={i} className="clv-row">
+              <div className="f-team">{t.team}</div>
+              <div className="f-prov dim">{t.provider || '—'}</div>
+              <div className="r mono">{entryProb ? `${(entryProb * 100).toFixed(0)}¢` : '—'}</div>
+              <div className="r mono">{clvProb != null ? `${(clvProb * 100).toFixed(0)}¢` : '—'}</div>
+              <div className={`r mono ${ce >= 0 ? 'p-up' : 'p-down'}`}>
+                {ce >= 0 ? '+' : ''}{(ce * 100).toFixed(1)}¢
+              </div>
+              <div className={`r mono ${(t.pnl || 0) >= 0 ? 'p-up' : 'p-down'}`}>{fmtSigned(t.pnl)}</div>
+              <div className="clv-viz">
+                <div className="clv-viz-center" />
+                <div
+                  className={`clv-viz-bar ${ce >= 0 ? 'p-up-bg' : 'p-down-bg'}`}
+                  style={{
+                    width: `${Math.min(50, (Math.abs(ce) / max) * 50)}%`,
+                    [ce >= 0 ? 'left' : 'right']: '50%',
+                  }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-// ───── Modal ─────
+function SportBreakdown({ bySport }) {
+  const rows = Object.entries(bySport).sort((a, b) => Math.abs(b[1].pnl) - Math.abs(a[1].pnl))
+  const max = Math.max(...rows.map(([, v]) => Math.abs(v.pnl)), 1)
+  if (!rows.length) return <div className="empty small">No trades yet</div>
+  return (
+    <div className="sport-rows">
+      {rows.map(([sport, v]) => {
+        const wr = v.trades ? v.wins / v.trades : 0
+        const up = v.pnl >= 0
+        return (
+          <div key={sport} className="sport-row">
+            <div className="sport-name">{SPORT_LABEL[sport] || sport}</div>
+            <div className="mono sport-trades dim">{v.trades}</div>
+            <div className="mono sport-wr dim">{fmtPct(wr)}</div>
+            <div className="sport-bar">
+              <div className={`sport-bar-fill ${up ? 'up' : 'down'}`} style={{ width: `${(Math.abs(v.pnl) / max) * 100}%` }} />
+            </div>
+            <div className={`mono sport-pnl ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(v.pnl)}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LedgerTable({ trades }) {
+  if (!trades.length) return <div className="empty small">No closed trades yet</div>
+  return (
+    <div className="ledger">
+      <div className="ledger-head">
+        <div>Team</div>
+        <div className="hide-sm">Sport</div>
+        <div className="r">Entry</div>
+        <div className="r hide-sm">Exit</div>
+        <div className="r hide-sm">CLV</div>
+        <div className="r">P&L</div>
+        <div className="hide-sm">Reason</div>
+      </div>
+      {trades.map((t, i) => {
+        const up = (t.pnl || 0) >= 0
+        const ce = t.clv_edge
+        return (
+          <div key={i} className="ledger-row">
+            <div>{t.team}</div>
+            <div className="hide-sm dim">{SPORT_LABEL[t.sport] || t.sport}</div>
+            <div className="r mono dim">{fmtCents(t.entry_price)}</div>
+            <div className="r mono hide-sm">{fmtCents(t.exit_price)}</div>
+            <div className={`r mono hide-sm ${ce == null ? 'dim' : ce >= 0 ? 'p-up' : 'p-down'}`}>
+              {ce == null ? '—' : `${ce >= 0 ? '+' : ''}${(ce * 100).toFixed(1)}¢`}
+            </div>
+            <div className={`r mono ${up ? 'p-up' : 'p-down'}`}>{fmtSigned(t.pnl)}</div>
+            <div className="hide-sm dim ledger-reason" title={t.exit_reason}>{t.exit_reason || '—'}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ConfirmModal({ modal, onDone }) {
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState(null)
-  const act = async () => {
+  const isAll = modal.type === 'close-all'
+  const confirm = async () => {
     setBusy(true)
     try {
-      const url = modal.type === 'close-all' ? `${API}/api/close-all` : `${API}/api/close/${modal.id}`
-      const body = modal.type === 'close-all' ? JSON.stringify({ confirm: 'CLOSE_ALL' }) : '{}'
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-      const j = await r.json()
-      setResult(j)
-    } catch (e) { setResult({ error: e.message }) }
-    setBusy(false)
+      const url = isAll ? `${API}/api/close-all` : `${API}/api/close/${modal.id}`
+      const body = isAll ? { confirm: 'CLOSE_ALL' } : {}
+      await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    } catch (e) { console.error(e) }
+    onDone()
   }
   return (
-    <div className="modal-bg" onClick={onDone}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-head">
-          <div className="modal-title">{modal.type === 'close-all' ? 'Close all positions?' : 'Close position?'}</div>
-          <button className="ic-btn" onClick={onDone}><I.x /></button>
+    <div className="modal-backdrop" onClick={onDone}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-title">{isAll ? 'Close all positions?' : 'Close this position?'}</div>
+        <div className="modal-sub">
+          {isAll ? 'This closes every open position at current market price.' : 'The position will be closed at current market price.'}
         </div>
-        {!result && <p className="modal-body">Marks all open positions to market at current bid prices. Paper mode — no real funds.</p>}
-        {result?.ok && (
-          <div className="modal-body">
-            <p>Closed {result.closed ?? 1} position{(result.closed ?? 1) !== 1 ? 's' : ''}.</p>
-            <p className={`mono ${(result.total_pnl ?? result.pnl) >= 0 ? 'p-up' : 'p-down'}`}>P&L: {fmtSigned(result.total_pnl ?? result.pnl)}</p>
-          </div>
-        )}
-        {result?.error && <p className="modal-body p-down">{result.error}</p>}
-        <div className="modal-foot">
-          {!result && <><button className="btn-ghost" onClick={onDone}>Cancel</button><button className="btn-primary" onClick={act} disabled={busy}>{busy ? 'Closing…' : 'Close'}</button></>}
-          {result && <button className="btn-primary" onClick={onDone}>Done</button>}
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onDone} disabled={busy}>Cancel</button>
+          <button className="btn-danger" onClick={confirm} disabled={busy}>{busy ? 'Closing…' : 'Close'}</button>
         </div>
       </div>
     </div>
   )
 }
 
-// ───── Scan activity ─────
 function ScanActivity() {
   const [scans, setScans] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')  // all | edge | harvest
   const [expandedId, setExpandedId] = useState(null)
 
   useEffect(() => {
     let mounted = true
     const load = async () => {
       try {
-        const qs = filter === 'all' ? '' : `?engine=${filter}`
-        const res = await fetch(`${API}/api/scans${qs}`)
+        const res = await fetch(`${API}/api/scans?engine=edge&limit=40`)
         const data = await res.json()
-        if (mounted) {
-          setScans(data.scans || [])
-          setLoading(false)
-        }
-      } catch (e) {
-        if (mounted) setLoading(false)
-      }
+        if (mounted) { setScans(data.scans || []); setLoading(false) }
+      } catch (e) { if (mounted) setLoading(false) }
     }
     load()
-    const iv = setInterval(load, 10000)  // refresh every 10s
+    const iv = setInterval(load, 10000)
     return () => { mounted = false; clearInterval(iv) }
-  }, [filter])
+  }, [])
 
   if (loading) return <div className="empty small">Loading scans…</div>
   if (!scans.length) return <div className="empty small">No scans recorded yet</div>
 
   return (
-    <div className="scan-activity">
-      <div className="scan-filters">
-        {['all', 'edge', 'harvest'].map(f => (
-          <button
-            key={f}
-            className={`scan-filter ${filter === f ? 'active' : ''}`}
-            onClick={() => setFilter(f)}
-          >{f}</button>
-        ))}
-        <span className="scan-filter-count dim">{scans.length} scans</span>
-      </div>
-
-      <div className="scan-list">
-        {scans.slice(0, 50).map(scan => {
-          const expanded = expandedId === scan.id
-          const findings = scan.findings || []
-          const sigCount = scan.signals || 0
-          return (
-            <div key={`${scan.engine}-${scan.id}-${scan.ts}`} className="scan-row-wrap">
-              <div
-                className={`scan-row ${expanded ? 'expanded' : ''}`}
-                onClick={() => setExpandedId(expanded ? null : scan.id)}
-              >
-                <div className="scan-time mono">{fmtScanTime(scan.ts)}</div>
-                <div className={`tag tag-${scan.engine}`}>{scan.engine}</div>
-                <div className="scan-stats">
-                  <span className="scan-stat">
-                    <span className="dim">findings</span>
-                    <span className="mono">{scan.total_findings}</span>
-                  </span>
-                  <span className="scan-stat">
-                    <span className="dim">signals</span>
-                    <span className={`mono ${sigCount > 0 ? 'p-up' : 'dim'}`}>{sigCount}</span>
-                  </span>
-                  {scan.odds_sources && (
-                    <>
-                      <span className="scan-stat">
-                        <span className="dim">espn</span>
-                        <span className="mono">{scan.odds_sources.espn_odds || 0}</span>
-                      </span>
-                      <span className="scan-stat">
-                        <span className="dim">oddsapi</span>
-                        <span className="mono">{scan.odds_sources.oddsapi_odds || 0}</span>
-                      </span>
-                    </>
-                  )}
-                  <span className="scan-stat">
-                    <span className="dim">ms</span>
-                    <span className="mono">{scan.duration_ms}</span>
-                  </span>
-                </div>
-                <div className="scan-chevron">{expanded ? '▾' : '▸'}</div>
+    <div className="scan-list">
+      {scans.slice(0, 30).map(scan => {
+        const expanded = expandedId === scan.id
+        const findings = scan.findings || []
+        const sigCount = scan.signals || 0
+        return (
+          <div key={`${scan.id}-${scan.ts}`} className="scan-row-wrap">
+            <div className={`scan-row ${expanded ? 'expanded' : ''}`} onClick={() => setExpandedId(expanded ? null : scan.id)}>
+              <div className="scan-time mono">{fmtScanTime(scan.ts)}</div>
+              <div className="scan-stats">
+                <span className="scan-stat"><span className="dim">findings</span><span className="mono">{scan.total_findings}</span></span>
+                <span className="scan-stat"><span className="dim">signals</span><span className={`mono ${sigCount > 0 ? 'p-up' : 'dim'}`}>{sigCount}</span></span>
+                {scan.odds_sources && <span className="scan-stat"><span className="dim">odds</span><span className="mono">{scan.odds_sources.total || 0}</span></span>}
+                <span className="scan-stat"><span className="dim">ms</span><span className="mono">{scan.duration_ms}</span></span>
               </div>
-              {expanded && findings.length > 0 && (
-                <div className="scan-findings">
-                  {scan.engine === 'edge' ? <EdgeFindingsTable findings={findings} />
-                                          : <HarvestFindingsTable findings={findings} />}
-                </div>
-              )}
-              {expanded && findings.length === 0 && (
-                <div className="scan-findings empty small">No findings this scan.</div>
-              )}
+              <div className="scan-chevron">{expanded ? '▾' : '▸'}</div>
             </div>
-          )
-        })}
-      </div>
+            {expanded && findings.length > 0 && <div className="scan-findings"><EdgeFindingsTable findings={findings} /></div>}
+            {expanded && findings.length === 0 && <div className="scan-findings empty small">No findings this scan.</div>}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1013,16 +800,13 @@ function fmtScanTime(ts) {
 }
 
 function statusTone(s) {
-  if (s === 'TRADED' || s === 'signal') return 'p-up'
+  if (s === 'TRADED' || s === 'CANDIDATE') return 'p-up'
   if (s === 'skip' || s?.startsWith('SKIP')) return 'dim'
   return ''
 }
 
 function EdgeFindingsTable({ findings }) {
-  // Sort by effective_edge desc so best at top
-  const sorted = [...findings].sort((a, b) =>
-    (b.effective_edge || b.edge || 0) - (a.effective_edge || a.edge || 0)
-  )
+  const sorted = [...findings].sort((a, b) => (b.effective_edge || b.edge || 0) - (a.effective_edge || a.edge || 0))
   return (
     <div className="findings-table">
       <div className="findings-head">
@@ -1036,25 +820,20 @@ function EdgeFindingsTable({ findings }) {
         <div>Status</div>
       </div>
       {sorted.map((f, i) => {
-        const ml = f.moneyline
-        const bookProb = ml
-          ? ml > 0 ? 100 / (ml + 100) : Math.abs(ml) / (Math.abs(ml) + 100)
-          : null
+        const bookProb = mlToProb(f.moneyline)
         const edgeVal = f.effective_edge ?? f.edge ?? 0
         return (
           <div key={i} className="findings-row">
             <div className="f-team">{f.team}</div>
-            <div className="f-sport dim">{f.sport}</div>
+            <div className="f-sport dim">{SPORT_LABEL[f.sport] || f.sport}</div>
             <div className="r mono">{f.poly != null ? `${(f.poly * 100).toFixed(0)}¢` : '—'}</div>
             <div className="r mono">{bookProb != null ? `${(bookProb * 100).toFixed(0)}¢` : '—'}</div>
             <div className="r mono">{f.true != null ? `${(f.true * 100).toFixed(0)}¢` : '—'}</div>
-            <div className={`r mono ${edgeVal >= 0.05 ? 'p-up' : edgeVal < 0 ? 'p-down' : 'dim'}`}>
+            <div className={`r mono ${edgeVal >= 0.05 ? 'p-up' : edgeVal >= 0.03 ? '' : edgeVal < 0 ? 'p-down' : 'dim'}`}>
               {edgeVal >= 0 ? '+' : ''}{(edgeVal * 100).toFixed(1)}%
             </div>
             <div className="f-prov dim">{f.provider || '—'}</div>
-            <div className={`f-status ${statusTone(f.status)}`} title={f.reason || ''}>
-              {f.status || '—'}
-            </div>
+            <div className={`f-status ${statusTone(f.status)}`} title={f.reason || ''}>{f.status || '—'}</div>
           </div>
         )
       })}
@@ -1062,37 +841,6 @@ function EdgeFindingsTable({ findings }) {
   )
 }
 
-function HarvestFindingsTable({ findings }) {
-  return (
-    <div className="findings-table harvest-findings">
-      <div className="findings-head">
-        <div>Leader</div>
-        <div>Sport</div>
-        <div className="r">Lead</div>
-        <div className="r">Conf</div>
-        <div className="r">Price</div>
-        <div>Status</div>
-        <div>Reason</div>
-      </div>
-      {findings.map((f, i) => {
-        const price = typeof f.price === 'number' ? f.price : null
-        return (
-          <div key={i} className="findings-row h-row">
-            <div className="f-team">{f.leader || '—'}</div>
-            <div className="f-sport dim">{f.sport || '—'}</div>
-            <div className="r mono">+{f.lead ?? '—'}</div>
-            <div className="r mono">{f.confidence != null ? `${(f.confidence * 100).toFixed(1)}%` : '—'}</div>
-            <div className="r mono">{price != null ? `${(price * 100).toFixed(0)}¢` : '—'}</div>
-            <div className={`f-status ${statusTone(f.status)}`}>{f.status || '—'}</div>
-            <div className="f-reason dim" title={f.reason}>{f.reason || ''}</div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ───── Splash ─────
 function Splash({ err }) {
   return (
     <div className="splash">
