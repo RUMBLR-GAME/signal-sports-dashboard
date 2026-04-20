@@ -183,11 +183,7 @@ export default function App() {
         <button className="mobile-menu" onClick={() => setNavOpen(true)}><I.menu /></button>
         <div className="content" ref={scroller}>
           <section ref={sectionRefs.overview}>
-            <HeroRow stats={stats} state={state} onCloseAll={() => setModal({ type: 'close-all' })} />
-          </section>
-
-          <section className="section">
-            <EdgeFlowBar state={state} />
+            <OverviewPanel stats={stats} state={state} onCloseAll={() => setModal({ type: 'close-all' })} />
           </section>
 
           <section ref={sectionRefs.positions} className="section">
@@ -285,88 +281,181 @@ function StatusMini({ state }) {
   )
 }
 
-function HeroRow({ stats, state, onCloseAll }) {
+// ───── OVERVIEW PANEL — the top of the dashboard, one coherent unit ─────
+function OverviewPanel({ stats, state, onCloseAll }) {
+  const sparkPts = useEquityCurve(state, stats)
   const dayUp = stats.todayPnl >= 0
   const totUp = stats.pct >= 0
   const clv = stats.avgClv
-  const sparkPts = useEquityCurve(state, stats)
+  const exposurePct = Math.min(1, stats.exposure)
+
   return (
-    <div className="hero-row hero-row-4">
-      <div className="hero hero-featured">
-        <div className="hero-head"><SignalMark size={14} /><span>Equity</span></div>
-        <div className="hero-big display">{fmtUSD(stats.equity, 2)}</div>
-        <div className={`hero-sub ${totUp ? 'p-up' : 'p-down'}`}>
-          <span className="mono">{fmtSignedPct(stats.pct)}</span>
-          <span style={{ opacity: 0.5 }}>·</span>
-          <span className="mono">{fmtSigned(stats.realized + stats.unrealized)}</span>
+    <div className="overview-panel">
+      {/* LEFT — Equity with integrated chart */}
+      <div className="ov-equity">
+        <div>
+          <div className="ov-equity-head">
+            <span>Equity</span>
+            <span className="live-dot" aria-hidden />
+          </div>
+          <div className="ov-equity-val">
+            <div className="ov-equity-big">{fmtUSD(stats.equity, 2)}</div>
+            <div className={`ov-equity-delta ${totUp ? 'up' : 'down'}`}>
+              {fmtSignedPct(stats.pct)}
+            </div>
+          </div>
+          <div className="ov-equity-sub">
+            <span>{fmtSigned(stats.realized + stats.unrealized)}</span>
+            <span className="sep">·</span>
+            <span>from {fmtUSD(stats.starting, 0)}</span>
+          </div>
         </div>
-        <HeroSparkline points={sparkPts} />
-      </div>
-
-      <div className="hero">
-        <div className="hero-head"><span>Today</span></div>
-        <div className={`hero-mid display ${dayUp ? 'p-up' : 'p-down'}`}>{fmtSigned(stats.todayPnl)}</div>
-        <div className="hero-sub dim mono">{stats.todayTrades} trades</div>
-      </div>
-
-      <div className="hero">
-        <div className="hero-head"><span>Avg CLV</span></div>
-        <div className={`hero-mid display ${clv == null ? 'dim' : clv >= 0 ? 'p-up' : 'p-down'}`}>
-          {clv == null ? '—' : `${clv >= 0 ? '+' : ''}${(clv * 100).toFixed(2)}¢`}
-        </div>
-        <div className="hero-sub dim mono">
-          {stats.beatClose == null ? 'no data yet' : `${Math.round(stats.beatClose * 100)}% beat close · ${stats.clvTrades.length}`}
+        <div className="ov-equity-chart">
+          <OverviewChart points={sparkPts} starting={stats.starting} />
         </div>
       </div>
 
-      <div className="hero">
-        <div className="hero-head">
-          <span>Deployed</span>
-          {stats.open.length > 0 && <button className="hero-btn" onClick={onCloseAll}>Close all</button>}
+      {/* RIGHT — 3 tiles + pipeline */}
+      <div className="ov-metrics">
+        <div className="ov-tiles">
+          {/* Today */}
+          <div className="ov-tile">
+            <div className="ov-tile-head"><span>Today</span></div>
+            <div className={`ov-tile-val ${dayUp ? 'p-up' : 'p-down'}`}>
+              {fmtSigned(stats.todayPnl)}
+            </div>
+            <div className="ov-tile-sub">{stats.todayTrades} {stats.todayTrades === 1 ? 'trade' : 'trades'}</div>
+          </div>
+
+          {/* Avg CLV */}
+          <div className="ov-tile">
+            <div className="ov-tile-head"><span>Avg CLV</span></div>
+            <div className={`ov-tile-val ${clv == null ? 'dim' : clv >= 0 ? 'p-up' : 'p-down'}`}>
+              {clv == null ? '—' : `${clv >= 0 ? '+' : ''}${(clv * 100).toFixed(2)}¢`}
+            </div>
+            <div className="ov-tile-sub">
+              {stats.beatClose == null
+                ? 'awaiting data'
+                : `${Math.round(stats.beatClose * 100)}% beat · ${stats.clvTrades.length}`}
+            </div>
+          </div>
+
+          {/* Deployed */}
+          <div className="ov-tile">
+            <div className="ov-tile-head">
+              <span>Deployed</span>
+              {stats.open.length > 0 && (
+                <button className="ov-close-btn" onClick={onCloseAll}>Close</button>
+              )}
+            </div>
+            <div className="ov-tile-val">{fmtUSD(stats.deployed, 0)}</div>
+            <div className="ov-tile-sub">{fmtPct(stats.exposure, 0)} · {stats.open.length} open</div>
+            <RingBadge pct={exposurePct} />
+          </div>
         </div>
-        <div className="hero-mid display">{fmtUSD(stats.deployed, 0)}</div>
-        <div className="hero-sub dim mono">{fmtPct(stats.exposure, 0)} · {stats.open.length} positions</div>
-        <HeroRing pct={Math.min(1, stats.exposure)} />
+
+        {/* PIPELINE footer */}
+        <PipelineStrip state={state} />
       </div>
     </div>
   )
 }
 
-function HeroSparkline({ points }) {
-  if (!points || points.length < 2) return null
-  const W = 76, H = 24
-  const vals = points.map(p => p.equity)
-  const min = Math.min(...vals), max = Math.max(...vals)
-  const r = max - min || 1
-  const xs = points.map((_, i) => (i / (points.length - 1)) * W)
-  const ys = points.map(p => H - ((p.equity - min) / r) * (H - 4) - 2)
-  const path = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
-  return (
-    <svg className="hero-sparkline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-      <path d={path} fill="none" stroke="white" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function HeroRing({ pct }) {
-  const R = 18
+function RingBadge({ pct }) {
+  const R = 9
   const C = 2 * Math.PI * R
-  const offset = C * (1 - pct)
   return (
-    <svg className="hero-ring" viewBox="0 0 44 44">
-      <circle cx="22" cy="22" r={R} className="hero-ring-track" />
-      <circle
-        cx="22" cy="22" r={R}
-        className="hero-ring-fill"
+    <svg className="ring-badge" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r={R} className="t" />
+      <circle cx="12" cy="12" r={R} className="f"
         strokeDasharray={C}
-        strokeDashoffset={offset}
+        strokeDashoffset={C * (1 - pct)}
       />
-      <text x="22" y="22" className="hero-ring-text">{Math.round(pct * 100)}</text>
     </svg>
   )
 }
 
-function EdgeFlowBar({ state }) {
+// Compact chart used inside the overview panel
+function OverviewChart({ points, starting }) {
+  const ref = useRef(null)
+  const [hover, setHover] = useState(null)
+  const W = 420, H = 88
+  const padT = 4, padB = 2
+
+  const data = useMemo(() => {
+    if (!points || points.length < 2) return null
+    const vals = points.map(p => p.equity)
+    let min = Math.min(starting, ...vals)
+    let max = Math.max(starting, ...vals)
+    const r = max - min || Math.max(starting * 0.02, 1)
+    min -= r * 0.1; max += r * 0.1
+    const tMin = points[0].ts, tMax = points[points.length - 1].ts
+    const dt = tMax - tMin || 1
+    const xs = points.map(p => ((p.ts - tMin) / dt) * W)
+    const ys = points.map(p => padT + (1 - (p.equity - min) / (max - min)) * (H - padT - padB))
+    const path = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ')
+    const area = `${path} L ${xs[xs.length - 1].toFixed(1)} ${H} L ${xs[0].toFixed(1)} ${H} Z`
+    const pts = points.map((p, i) => ({ ...p, x: xs[i], y: ys[i] }))
+    return { path, area, pts, min, max }
+  }, [points, starting])
+
+  if (!data) return <div className="chart-empty">building curve…</div>
+
+  const last = data.pts[data.pts.length - 1]
+  const up = last && last.equity >= starting
+
+  const onMove = (e) => {
+    if (!ref.current || !data.pts.length) return
+    const rect = ref.current.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * W
+    let best = 0, bd = Infinity
+    for (let i = 0; i < data.pts.length; i++) {
+      const d = Math.abs(data.pts[i].x - x)
+      if (d < bd) { bd = d; best = i }
+    }
+    setHover(data.pts[best])
+  }
+
+  return (
+    <div className="chart-wrap">
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="chart"
+           onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        <defs>
+          <linearGradient id="grad-up" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#BDE57A" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#BDE57A" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="grad-down" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#EF7F86" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#EF7F86" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={data.area} className={`chart-area ${up ? 'up' : 'down'}`} />
+        <path d={data.path} className={`chart-line ${up ? 'up' : 'down'}`} />
+        {last && (
+          <>
+            <circle cx={last.x} cy={last.y} r="3" className={`pulse-ring-outer ${up ? 'up' : 'down'}`} />
+            <circle cx={last.x} cy={last.y} r="3" className={`pulse-dot ${up ? 'up' : 'down'}`} />
+          </>
+        )}
+        {hover && (
+          <>
+            <line x1={hover.x} x2={hover.x} y1={padT} y2={H - padB} className="hover-line" />
+            <circle cx={hover.x} cy={hover.y} r="3.5" className="hover-dot" />
+          </>
+        )}
+      </svg>
+      {hover && (
+        <div className="chart-tooltip" style={{ left: `${Math.max(6, Math.min(94, (hover.x / W) * 100))}%`, top: '-38px' }}>
+          <div className="tt-val">{fmtUSD(hover.equity)}</div>
+          <div className="tt-sub">{fmtAgo(hover.ts)} ago</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PipelineStrip({ state }) {
   const odds = state.odds_source_counts || {}
   const diag = state.edge_scan_diag || {}
   const lastScan = state.last_edge_scan
@@ -374,32 +463,35 @@ function EdgeFlowBar({ state }) {
   const nextIn = lastScan ? Math.max(0, 120 - lastAgo) : null
   const progressPct = nextIn != null ? ((120 - nextIn) / 120) * 100 : 0
   const leagueCount = Math.max((odds.oddsapi_sports || []).length, (odds.espn_sports || []).length)
+  const signals = diag.signals_generated || 0
   return (
-    <div className="edge-flow">
-      <div className="ef-item">
-        <div className="ef-val display">{leagueCount}</div>
-        <div className="ef-lbl">leagues</div>
+    <div className="ov-pipeline">
+      <div className="ov-pipe-item">
+        <div className="ov-pipe-val">{leagueCount}</div>
+        <div className="ov-pipe-lbl">leagues</div>
       </div>
-      <div className="ef-item">
-        <div className="ef-val display">{odds.total || 0}</div>
-        <div className="ef-lbl">odds</div>
+      <div className="ov-pipe-item">
+        <div className="ov-pipe-val">{odds.total || 0}</div>
+        <div className="ov-pipe-lbl">odds</div>
       </div>
-      <div className="ef-item">
-        <div className="ef-val display">{diag.sides_evaluated || 0}</div>
-        <div className="ef-lbl">evaluated</div>
+      <div className="ov-pipe-item">
+        <div className="ov-pipe-val">{diag.sides_evaluated || 0}</div>
+        <div className="ov-pipe-lbl">evaluated</div>
       </div>
-      <div className="ef-item">
-        <div className={`ef-val display ${(diag.signals_generated || 0) > 0 ? 'p-up' : 'dim'}`}>{diag.signals_generated || 0}</div>
-        <div className="ef-lbl">signals</div>
+      <div className="ov-pipe-item">
+        <div className={`ov-pipe-val ${signals > 0 ? 'p-up' : 'dim'}`}>{signals}</div>
+        <div className="ov-pipe-lbl">signals</div>
       </div>
-      <div className="ef-item">
-        <div className="ef-val display">{lastAgo != null ? `${lastAgo}s` : '—'}</div>
-        <div className="ef-lbl">last scan</div>
+      <div className="ov-pipe-item">
+        <div className="ov-pipe-val">{lastAgo != null ? `${lastAgo}s` : '—'}</div>
+        <div className="ov-pipe-lbl">last</div>
       </div>
-      <div className="ef-item">
-        <div className="ef-val display">{nextIn != null ? `${nextIn}s` : '—'}</div>
-        <div className="ef-lbl">next in</div>
-        <div className="ef-tick"><div className="ef-tick-bar" style={{ width: `${progressPct}%` }} /></div>
+      <div className="ov-pipe-item">
+        <div className="ov-pipe-val">{nextIn != null ? `${nextIn}s` : '—'}</div>
+        <div className="ov-pipe-lbl">next</div>
+      </div>
+      <div className="ov-pipe-progress">
+        <div className="ov-pipe-progress-bar" style={{ width: `${progressPct}%` }} />
       </div>
     </div>
   )
@@ -533,14 +625,14 @@ function LiveChart({ points, starting }) {
   const xTicks = [0, xStep, xStep * 2, xStep * 3].filter(i => i < data.pts.length).map(i => data.pts[i])
 
   return (
-    <div className="chart-wrap">
-      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="chart" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+    <div className="chart-wrap standalone">
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="chart standalone" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
         <defs>
-          <linearGradient id="grad-up" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="grad-up-std" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#A8D66A" stopOpacity="0.5" />
             <stop offset="100%" stopColor="#A8D66A" stopOpacity="0" />
           </linearGradient>
-          <linearGradient id="grad-down" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="grad-down-std" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#E27178" stopOpacity="0.5" />
             <stop offset="100%" stopColor="#E27178" stopOpacity="0" />
           </linearGradient>
@@ -598,53 +690,48 @@ function LiveChart({ points, starting }) {
 }
 
 function ExposureCard({ stats, state }) {
-  const available = Math.max(0, 1 - stats.exposure)
   const pct = Math.min(1, stats.exposure)
-  const R = 48
+  const R = 42
   const C = 2 * Math.PI * R
   const offset = C * (1 - pct)
   const zone = pct > 0.85 ? 'danger' : pct > 0.6 ? 'full' : 'safe'
 
-  // Caps breakdown — pull from bot state if available, else use exposure
   const edgeDeployed = stats.open.filter(p => p.engine === 'edge').reduce((s, p) => s + (p.cost || 0), 0)
   const edgePct = edgeDeployed / Math.max(stats.equity, 1)
 
   return (
-    <div className="card">
+    <div className="exp-card">
       <div className="card-head">
         <h2 className="section-title flat">Exposure</h2>
-        <div className="label-eyebrow" style={{ color: 'var(--text-4)' }}>Real-time</div>
       </div>
       <div className="exp-ring-wrap">
-        <svg className="exp-ring" viewBox="0 0 112 112">
-          <circle cx="56" cy="56" r={R} className="exp-ring-track" />
-          <circle
-            cx="56" cy="56" r={R}
+        <svg className="exp-ring" viewBox="0 0 96 96">
+          <circle cx="48" cy="48" r={R} className="exp-ring-track" />
+          <circle cx="48" cy="48" r={R}
             className={`exp-ring-fill zone-${zone}`}
             strokeDasharray={C}
             strokeDashoffset={offset}
+            style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}
           />
+          <text x="48" y="44" className="exp-ring-pct">{Math.round(pct * 100)}%</text>
+          <text x="48" y="60" className="exp-ring-pct-sub">deployed</text>
         </svg>
-        <div>
-          <div className="exp-big display">{fmtPct(stats.exposure, 0)}</div>
-          <div className="exp-legend" style={{ marginTop: 12 }}>
-            <div className="leg-item">
-              <span className="leg-dot leg-edge" />
-              <span className="dim">Deployed</span>
-              <span className="mono">{fmtUSD(stats.deployed, 0)}</span>
-            </div>
-            <div className="leg-item">
-              <span className="leg-dot leg-avail" />
-              <span className="dim">Available</span>
-              <span className="mono">{fmtUSD(stats.equity - stats.deployed, 0)}</span>
-            </div>
+        <div className="exp-legend">
+          <div className="leg-item">
+            <span className="leg-dot leg-edge" />
+            <span className="lbl">Deployed</span>
+            <span className="val">{fmtUSD(stats.deployed, 0)}</span>
+          </div>
+          <div className="leg-item">
+            <span className="leg-dot leg-avail" />
+            <span className="lbl">Available</span>
+            <span className="val">{fmtUSD(stats.equity - stats.deployed, 0)}</span>
           </div>
         </div>
       </div>
-
       <div className="exp-caps">
-        <Cap lbl="Total" pct={stats.exposure} cap={0.80} />
-        <Cap lbl="Edge" pct={edgePct} cap={0.80} />
+        <Cap lbl="Total cap" pct={stats.exposure} cap={0.80} />
+        <Cap lbl="Edge cap" pct={edgePct} cap={0.80} />
         <Cap lbl="Positions" pct={stats.open.length / 15} cap={1} raw={`${stats.open.length}/15`} />
       </div>
     </div>
