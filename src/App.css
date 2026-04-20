@@ -368,9 +368,14 @@
 .ov-equity-sub .sep { color: var(--text-5); }
 
 .ov-equity-chart {
-  height: 88px;
-  margin: 16px -30px -24px;
+  height: 80px;
+  margin: 14px -30px -24px;
   position: relative;
+  overflow: hidden;
+}
+.ov-equity-chart .chart-wrap,
+.ov-equity-chart .chart {
+  overflow: hidden;
 }
 
 /* Right: 3 metric tiles + pipeline footer */
@@ -384,12 +389,13 @@
   border-bottom: 1px solid var(--border-soft);
 }
 .ov-tile {
-  padding: 22px 20px 18px;
+  padding: 20px 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   border-right: 1px solid var(--border-soft);
   position: relative;
+  min-width: 0;
 }
 .ov-tile:last-child { border-right: none; }
 .ov-tile-head {
@@ -438,6 +444,38 @@
   transform: rotate(-90deg);
   transform-origin: center;
   transition: stroke-dashoffset 600ms var(--ease);
+}
+
+.ov-tile .ring-badge { display: none; }
+
+/* Pulse overlay — aspect-preserving, sits on top of the chart */
+.pulse-overlay {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  width: 0; height: 0;
+}
+.pulse-dot-sm {
+  position: absolute;
+  top: -3px; left: -3px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-2);
+}
+.pulse-dot-sm.up   { background: var(--green-bright); }
+.pulse-dot-sm.down { background: var(--red-bright); }
+.pulse-ring-sm {
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  border-radius: 50%;
+  animation: pulse-sm-ring 2.2s ease-out infinite;
+}
+.pulse-ring-sm.up   { border: 1.5px solid var(--green-bright); }
+.pulse-ring-sm.down { border: 1.5px solid var(--red-bright); }
+@keyframes pulse-sm-ring {
+  0%   { width: 6px; height: 6px; top: -3px; left: -3px; opacity: 0.8; }
+  100% { width: 24px; height: 24px; top: -12px; left: -12px; opacity: 0; }
 }
 
 .ov-close-btn {

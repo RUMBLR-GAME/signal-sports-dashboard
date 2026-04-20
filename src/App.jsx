@@ -287,7 +287,6 @@ function OverviewPanel({ stats, state, onCloseAll }) {
   const dayUp = stats.todayPnl >= 0
   const totUp = stats.pct >= 0
   const clv = stats.avgClv
-  const exposurePct = Math.min(1, stats.exposure)
 
   return (
     <div className="overview-panel">
@@ -345,12 +344,11 @@ function OverviewPanel({ stats, state, onCloseAll }) {
             <div className="ov-tile-head">
               <span>Deployed</span>
               {stats.open.length > 0 && (
-                <button className="ov-close-btn" onClick={onCloseAll}>Close</button>
+                <button className="ov-close-btn" onClick={onCloseAll}>Close all</button>
               )}
             </div>
             <div className="ov-tile-val">{fmtUSD(stats.deployed, 0)}</div>
             <div className="ov-tile-sub">{fmtPct(stats.exposure, 0)} · {stats.open.length} open</div>
-            <RingBadge pct={exposurePct} />
           </div>
         </div>
 
@@ -361,21 +359,6 @@ function OverviewPanel({ stats, state, onCloseAll }) {
   )
 }
 
-function RingBadge({ pct }) {
-  const R = 9
-  const C = 2 * Math.PI * R
-  return (
-    <svg className="ring-badge" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r={R} className="t" />
-      <circle cx="12" cy="12" r={R} className="f"
-        strokeDasharray={C}
-        strokeDashoffset={C * (1 - pct)}
-      />
-    </svg>
-  )
-}
-
-// Compact chart used inside the overview panel
 function OverviewChart({ points, starting }) {
   const ref = useRef(null)
   const [hover, setHover] = useState(null)
@@ -432,19 +415,22 @@ function OverviewChart({ points, starting }) {
         </defs>
         <path d={data.area} className={`chart-area ${up ? 'up' : 'down'}`} />
         <path d={data.path} className={`chart-line ${up ? 'up' : 'down'}`} />
-        {last && (
-          <>
-            <circle cx={last.x} cy={last.y} r="3" className={`pulse-ring-outer ${up ? 'up' : 'down'}`} />
-            <circle cx={last.x} cy={last.y} r="3" className={`pulse-dot ${up ? 'up' : 'down'}`} />
-          </>
-        )}
         {hover && (
           <>
             <line x1={hover.x} x2={hover.x} y1={padT} y2={H - padB} className="hover-line" />
-            <circle cx={hover.x} cy={hover.y} r="3.5" className="hover-dot" />
           </>
         )}
       </svg>
+      {/* Pulse overlay — aspect-preserving so the circle stays round */}
+      {last && (
+        <div className="pulse-overlay" style={{
+          left: `${(last.x / W) * 100}%`,
+          top: `${(last.y / H) * 100}%`,
+        }}>
+          <span className={`pulse-dot-sm ${up ? 'up' : 'down'}`} />
+          <span className={`pulse-ring-sm ${up ? 'up' : 'down'}`} />
+        </div>
+      )}
       {hover && (
         <div className="chart-tooltip" style={{ left: `${Math.max(6, Math.min(94, (hover.x / W) * 100))}%`, top: '-38px' }}>
           <div className="tt-val">{fmtUSD(hover.equity)}</div>
