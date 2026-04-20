@@ -506,7 +506,7 @@ function PositionsList({ positions, onClose }) {
             <div className="pos-main">
               <div className="pos-team">{p.team}</div>
               <div className="pos-meta">
-                <span className="tag tag-edge">edge</span>
+                <span className={`tag tag-${p.engine || 'edge'}`}>{p.engine || 'edge'}</span>
                 <span className="pos-sport">{SPORT_LABEL[p.sport] || p.sport}</span>
               </div>
             </div>
